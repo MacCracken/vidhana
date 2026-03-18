@@ -4,136 +4,70 @@
 
 ## Current State
 
-Vidhana has 7 crates with full v1 architecture:
+Vidhana has 7 crates with full v1 architecture, 199 tests, ~80% line coverage:
 
-| Crate | Status | Notes |
-|-------|--------|-------|
-| `vidhana-core` | v1 | Types, shared state, TOML config, validation (clamp ranges) |
-| `vidhana-api` | v1 | REST CRUD + PATCH, history, NL endpoint, hoosh integration |
-| `vidhana-ui` | v1 | egui GUI with 9 panels (History, status bar), auto-save |
-| `vidhana-ai` | v1 | Keyword NL parser + async hoosh HTTP client with fallback |
-| `vidhana-settings` | v1 | TOML persistence + SQLite audit trail |
-| `vidhana-mcp` | v1 | 6 MCP tools + initialize handshake, via SettingsService |
-| `vidhana-backend` | v1 | SystemBackend trait, LinuxBackend (brightnessctl/wpctl/nmcli/etc), SettingsService mediator |
+| Crate | Status | Coverage | Notes |
+|-------|--------|----------|-------|
+| `vidhana-core` | v1 | 92% | Types, shared state, TOML config, validation |
+| `vidhana-api` | v1 | 93% | REST CRUD + PATCH, history, NL endpoint, hoosh |
+| `vidhana-ui` | v1 | 5% | egui GUI, 9 panels, auto-save via SettingsService |
+| `vidhana-ai` | v1 | 87% | Keyword NL parser + async hoosh HTTP client |
+| `vidhana-settings` | v1 | 100% | TOML persistence + SQLite audit trail |
+| `vidhana-mcp` | v1 | 86% | 6 MCP tools + initialize handshake |
+| `vidhana-backend` | v1 | 83% | SystemBackend trait, LinuxBackend, SettingsService mediator |
 
-All mutations flow through `SettingsService`: validate → apply to OS → update state → persist → audit. `LinuxBackend` probes for CLI tools at startup and gracefully degrades when tools are missing. Hoosh integration provides LLM-powered NL parsing with automatic fallback to the local keyword parser.
-
----
-
-## MVP — Minimum Viable Product
-
-Goal: A working settings app that reads and writes real config, persists across restarts, and exposes a functional API.
-
-### Core
-
-- [x] Fix `toml_from_str` placeholder in `vidhana-core` — use `toml::from_str` instead of `serde_json`
-- [x] Add settings validation (brightness 0-100, volume 0-100, scaling 0.5-3.0, etc.)
-- [x] Add `Display` impl for `SettingsCategory`
-
-### Persistence
-
-- [x] Auto-save settings on every mutation (GUI, API, MCP)
-- [x] Wire `SettingsStore::record_change()` into API update handlers
-- [x] Wire `SettingsStore::record_change()` into MCP `set` handlers
-- [x] Pass `SettingsStore` through shared state via `AppState` / `Arc<SettingsStore>`
-
-### API
-
-- [x] Return proper error responses (`ApiError` -> JSON error body with status codes)
-- [x] Add `PATCH` support for partial updates (JSON merge on top of current state)
-- [x] Add `/v1/settings/history` endpoint for recent changes
-- [x] Add `/v1/settings/{category}/history` endpoint
-
-### GUI
-
-- [x] Wire GUI changes to persistence (auto-save on every frame with dirty flag)
-- [x] Add auto-save via dirty tracking (saves at end of frame and on panel switch)
-- [ ] Add status bar showing API connection state
-- [x] Add settings history panel (view recent changes in grid)
-
-### MCP
-
-- [x] Add `initialize` and `notifications/initialized` support per MCP spec
-- [x] Return structured errors for invalid arguments / unknown tools
-
-### Testing
-
-- [x] Integration tests for API (start server, hit endpoints, verify persistence)
-- [x] Round-trip test: save via API -> load state -> verify consistency
-- [x] PATCH validation test (clamp out-of-range, reject invalid enums)
-- [x] MCP persistence and history recording tests
+All mutations flow through `SettingsService`: validate -> apply to OS -> update state -> persist -> audit.
 
 ---
 
-## v1 — First Release
-
-Goal: Real system integration, natural language control, production-quality error handling.
+## Remaining v1 Items
 
 ### System Backends
 
-- [x] Display: read/write brightness via `brightnessctl`
 - [ ] Display: theme integration (GTK/Qt theme switching, or AGNOS-specific)
 - [ ] Display: night light via gammastep/wlsunset or similar
-- [x] Audio: PipeWire volume control via `wpctl`, PulseAudio fallback via `pactl`
 - [ ] Audio: enumerate and switch output/input devices
-- [x] Network: WiFi toggle via `nmcli radio wifi`
-- [x] Network: Bluetooth toggle via `bluetoothctl power`
 - [ ] Network: read real hostname, DNS from `/etc/resolv.conf` or systemd-resolved
 - [ ] Network: firewall status via nftables/iptables
-- [x] Power: read/set power profile via `powerprofilesctl`
 - [ ] Power: configure suspend/lid-close via logind D-Bus
-- [x] Locale: read/set timezone via `timedatectl`
 - [ ] Locale: keyboard layout via XKB / sway input config
 - [ ] Accessibility: integrate with AT-SPI / orca for screen reader
 - [ ] Privacy: screen lock via swaylock/swayidle or loginctl
-- [x] Backend trait + LinuxBackend with auto-detection of available tools
-- [x] NoopBackend for tests and sandboxed environments
-- [x] SettingsService mediator: validate → apply → persist → audit
 
 ### Natural Language
 
-- [x] Add `/v1/nl` API endpoint that accepts natural language and returns structured intent
-- [x] Integrate with hoosh (8088) for LLM-powered NL parsing via HooshClient
-- [x] Fallback to local keyword parser when hoosh is unavailable
 - [ ] Add NL input bar to GUI (text field at top of settings)
 
-### API Improvements
+### API
 
 - [ ] API versioning strategy (v1 stable contract)
 - [ ] Rate limiting
-- [x] Request/response logging middleware (tower-http TraceLayer)
 - [ ] OpenAPI/Swagger spec generation
 - [ ] WebSocket endpoint for real-time settings change notifications
 
-### GUI Improvements
+### GUI
 
 - [ ] Theming: apply selected theme to the settings app itself
 - [ ] Toast notifications on successful/failed changes
 - [ ] Search/filter across all settings panels
 - [ ] Keyboard navigation and shortcuts
 - [ ] Responsive layout for different window sizes
+- [ ] Status bar showing API connection state
 
-### MCP Improvements
+### MCP
 
-- [x] MCP protocol compliance: initialize, capabilities, tools/list, tools/call
-- [x] Add `vidhana_history` tool for querying change history (6 tools total)
 - [ ] Add `vidhana_nl` tool for natural language settings via MCP
 - [ ] SSE transport option (in addition to stdin/stdout)
 
 ### Quality
 
-- [x] Structured error types in API (`ApiError` with JSON responses, proper status codes)
 - [ ] Graceful degradation when system backends are unavailable
-- [x] CI pipeline: `cargo test`, `cargo clippy`, `cargo fmt --check` (all pass clean)
-- [x] Minimum test coverage for all public APIs (199 tests, ~80% line coverage)
 - [ ] man page / `--help` improvements
-- [ ] UI end-to-end testing via headless egui or screenshot-based regression testing
+- [ ] UI end-to-end testing via headless egui or screenshot-based regression
 
 ---
 
 ## Post-v1 — Polish & Integration
-
-Goal: Deep AGNOS ecosystem integration, better UX, operational maturity.
 
 ### AGNOS Integration
 
@@ -170,8 +104,6 @@ Goal: Deep AGNOS ecosystem integration, better UX, operational maturity.
 ---
 
 ## v2 — Advanced Features
-
-Goal: Multi-user, multi-device, extensibility, and advanced display management.
 
 ### Multi-Display
 
