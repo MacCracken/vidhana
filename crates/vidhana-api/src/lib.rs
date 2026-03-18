@@ -139,9 +139,17 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-async fn get_all_settings(State(app): State<AppState>) -> Json<serde_json::Value> {
-    let guard = app.settings.read().unwrap();
-    Json(serde_json::json!({
+fn read_state(app: &AppState) -> Result<std::sync::RwLockReadGuard<'_, VidhanaState>, ApiError> {
+    app.settings
+        .read()
+        .map_err(|_| ApiError::Internal("settings lock poisoned".to_string()))
+}
+
+async fn get_all_settings(
+    State(app): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let guard = read_state(&app)?;
+    Ok(Json(serde_json::json!({
         "display": guard.display,
         "audio": guard.audio,
         "network": guard.network,
@@ -149,13 +157,13 @@ async fn get_all_settings(State(app): State<AppState>) -> Json<serde_json::Value
         "locale": guard.locale,
         "power": guard.power,
         "accessibility": guard.accessibility,
-    }))
+    })))
 }
 
 // --- Display ---------------------------------------------------------------
 
-async fn get_display(State(app): State<AppState>) -> Json<DisplaySettings> {
-    Json(app.settings.read().unwrap().display.clone())
+async fn get_display(State(app): State<AppState>) -> Result<Json<DisplaySettings>, ApiError> {
+    Ok(Json(read_state(&app)?.display.clone()))
 }
 
 async fn update_display(
@@ -175,8 +183,8 @@ async fn patch_display(
 
 // --- Audio -----------------------------------------------------------------
 
-async fn get_audio(State(app): State<AppState>) -> Json<AudioSettings> {
-    Json(app.settings.read().unwrap().audio.clone())
+async fn get_audio(State(app): State<AppState>) -> Result<Json<AudioSettings>, ApiError> {
+    Ok(Json(read_state(&app)?.audio.clone()))
 }
 
 async fn update_audio(
@@ -196,8 +204,8 @@ async fn patch_audio(
 
 // --- Network ---------------------------------------------------------------
 
-async fn get_network(State(app): State<AppState>) -> Json<NetworkSettings> {
-    Json(app.settings.read().unwrap().network.clone())
+async fn get_network(State(app): State<AppState>) -> Result<Json<NetworkSettings>, ApiError> {
+    Ok(Json(read_state(&app)?.network.clone()))
 }
 
 async fn update_network(
@@ -217,8 +225,8 @@ async fn patch_network(
 
 // --- Privacy ---------------------------------------------------------------
 
-async fn get_privacy(State(app): State<AppState>) -> Json<PrivacySettings> {
-    Json(app.settings.read().unwrap().privacy.clone())
+async fn get_privacy(State(app): State<AppState>) -> Result<Json<PrivacySettings>, ApiError> {
+    Ok(Json(read_state(&app)?.privacy.clone()))
 }
 
 async fn update_privacy(
@@ -238,8 +246,8 @@ async fn patch_privacy(
 
 // --- Locale ----------------------------------------------------------------
 
-async fn get_locale(State(app): State<AppState>) -> Json<LocaleSettings> {
-    Json(app.settings.read().unwrap().locale.clone())
+async fn get_locale(State(app): State<AppState>) -> Result<Json<LocaleSettings>, ApiError> {
+    Ok(Json(read_state(&app)?.locale.clone()))
 }
 
 async fn update_locale(
@@ -259,8 +267,8 @@ async fn patch_locale(
 
 // --- Power -----------------------------------------------------------------
 
-async fn get_power(State(app): State<AppState>) -> Json<PowerSettings> {
-    Json(app.settings.read().unwrap().power.clone())
+async fn get_power(State(app): State<AppState>) -> Result<Json<PowerSettings>, ApiError> {
+    Ok(Json(read_state(&app)?.power.clone()))
 }
 
 async fn update_power(
@@ -280,8 +288,10 @@ async fn patch_power(
 
 // --- Accessibility ---------------------------------------------------------
 
-async fn get_accessibility(State(app): State<AppState>) -> Json<AccessibilitySettings> {
-    Json(app.settings.read().unwrap().accessibility.clone())
+async fn get_accessibility(
+    State(app): State<AppState>,
+) -> Result<Json<AccessibilitySettings>, ApiError> {
+    Ok(Json(read_state(&app)?.accessibility.clone()))
 }
 
 async fn update_accessibility(

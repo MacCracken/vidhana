@@ -11,5 +11,4 @@ vidhana-settings = { path = "../vidhana-settings" }
 vidhana-backend = { path = "../vidhana-backend" }
 egui = { workspace = true }
 eframe = { workspace = true }
-chrono = { workspace = true }
 tracing = { workspace = true }

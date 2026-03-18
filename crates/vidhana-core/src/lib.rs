@@ -23,7 +23,7 @@ pub fn new_shared_state(config: VidhanaConfig) -> SharedState {
 }
 
 /// Top-level application state
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VidhanaState {
     pub config: VidhanaConfig,
     pub display: DisplaySettings,
@@ -49,7 +49,7 @@ impl VidhanaState {
 }
 
 /// Application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VidhanaConfig {
     pub daimon_url: String,
     pub hoosh_url: String,
@@ -94,7 +94,7 @@ fn toml_from_str(s: &str) -> Result<VidhanaConfig, toml::de::Error> {
 }
 
 /// Display and appearance settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DisplaySettings {
     pub theme: Theme,
     pub brightness: u8,
@@ -149,7 +149,7 @@ impl std::fmt::Display for Theme {
 }
 
 /// Audio and sound settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioSettings {
     pub master_volume: u8,
     pub muted: bool,
@@ -179,7 +179,7 @@ impl AudioSettings {
 }
 
 /// Network configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NetworkSettings {
     pub hostname: String,
     pub wifi_enabled: bool,
@@ -213,7 +213,7 @@ impl NetworkSettings {
 }
 
 /// Proxy configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub http: Option<String>,
     pub https: Option<String>,
@@ -221,7 +221,7 @@ pub struct ProxyConfig {
 }
 
 /// Privacy and security settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrivacySettings {
     pub screen_lock_enabled: bool,
     pub screen_lock_timeout_secs: u32,
@@ -254,7 +254,7 @@ impl PrivacySettings {
 }
 
 /// Locale and language settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocaleSettings {
     pub language: String,
     pub region: String,
@@ -301,7 +301,7 @@ pub enum Weekday {
 }
 
 /// Power management settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PowerSettings {
     pub suspend_on_lid_close: bool,
     pub suspend_timeout_minutes: u32,
@@ -348,7 +348,7 @@ impl std::fmt::Display for PowerProfile {
 }
 
 /// Accessibility settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessibilitySettings {
     pub large_text: bool,
     pub reduce_motion: bool,

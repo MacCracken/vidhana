@@ -3384,7 +3384,6 @@ dependencies = [
 name = "vidhana-ui"
 version = "2026.3.18"
 dependencies = [
- "chrono",
  "eframe",
  "egui",
  "tracing",

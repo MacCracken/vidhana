@@ -1,6 +1,8 @@
 //! Vidhana UI — egui-based system settings application
 //!
 //! Tabbed interface for managing all AGNOS system settings.
+//! Every settings change flows through SettingsService which handles
+//! validation, OS backend application, persistence, and auditing.
 
 use std::sync::Arc;
 use vidhana_backend::SettingsService;
@@ -56,7 +58,6 @@ pub struct VidhanaApp {
     state: SharedState,
     service: Arc<SettingsService>,
     active_panel: Panel,
-    dirty: bool,
 }
 
 impl VidhanaApp {
@@ -65,31 +66,6 @@ impl VidhanaApp {
             state,
             service,
             active_panel: Panel::Display,
-            dirty: false,
-        }
-    }
-
-    fn save_if_dirty(&mut self) {
-        if self.dirty {
-            let guard = self.state.read().unwrap();
-            if let Err(e) = self.service.store.save_state(&guard) {
-                tracing::error!("Failed to save settings: {e}");
-            }
-            self.dirty = false;
-        }
-    }
-
-    fn record_change(&self, category: &str, key: &str, old: &str, new: &str) {
-        let change = vidhana_settings::SettingsChange {
-            timestamp: chrono::Utc::now(),
-            category: category.to_string(),
-            key: key.to_string(),
-            old_value: old.to_string(),
-            new_value: new.to_string(),
-            source: ChangeSource::Gui,
-        };
-        if let Err(e) = self.service.store.record_change(&change) {
-            tracing::error!("Failed to record change: {e}");
         }
     }
 }
@@ -110,7 +86,6 @@ impl eframe::App for VidhanaApp {
                         .selectable_label(self.active_panel == *panel, panel.label())
                         .clicked()
                     {
-                        self.save_if_dirty();
                         self.active_panel = *panel;
                     }
                 }
@@ -121,11 +96,7 @@ impl eframe::App for VidhanaApp {
             ui.horizontal(|ui| {
                 ui.label(format!("Vidhana v{}", env!("CARGO_PKG_VERSION")));
                 ui.separator();
-                if self.dirty {
-                    ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
-                } else {
-                    ui.label("All changes saved");
-                }
+                ui.label("All changes saved automatically");
             });
         });
 
@@ -146,42 +117,40 @@ impl eframe::App for VidhanaApp {
                 Panel::About => self.render_about(ui),
             }
         });
-
-        // Auto-save at end of frame if dirty
-        self.save_if_dirty();
     }
+}
+
+/// Commit changes through the service if the value changed.
+macro_rules! commit_if_changed {
+    ($self:expr, $snapshot:expr, $current:expr, $method:ident) => {
+        if $current != $snapshot {
+            if let Err(e) = $self.service.$method($current, ChangeSource::Gui) {
+                tracing::error!(concat!("Failed to update ", stringify!($method), ": {}"), e);
+            }
+        }
+    };
 }
 
 impl VidhanaApp {
     fn render_display(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").display.clone();
+        let mut display = snapshot.clone();
 
-        let mut brightness = guard.display.brightness as f32;
+        let mut brightness = display.brightness as f32;
         ui.label("Brightness");
         if ui
             .add(egui::Slider::new(&mut brightness, 0.0..=100.0).suffix("%"))
             .changed()
         {
-            let old = guard.display.brightness.to_string();
-            guard.display.brightness = brightness as u8;
-            self.dirty = true;
-            drop(guard);
-            self.record_change(
-                "display",
-                "brightness",
-                &old,
-                &(brightness as u8).to_string(),
-            );
-            return;
+            display.brightness = brightness as u8;
         }
 
         ui.add_space(8.0);
-        let mut theme_idx = match guard.display.theme {
+        let mut theme_idx = match display.theme {
             Theme::Light => 0,
             Theme::Dark => 1,
             Theme::System => 2,
         };
-        let old_theme_idx = theme_idx;
         ui.label("Theme");
         egui::ComboBox::from_id_salt("theme")
             .selected_text(match theme_idx {
@@ -194,209 +163,145 @@ impl VidhanaApp {
                 ui.selectable_value(&mut theme_idx, 1, "Dark");
                 ui.selectable_value(&mut theme_idx, 2, "System");
             });
-        if theme_idx != old_theme_idx {
-            let old = guard.display.theme.to_string();
-            guard.display.theme = match theme_idx {
-                0 => Theme::Light,
-                1 => Theme::Dark,
-                _ => Theme::System,
-            };
-            let new = guard.display.theme.to_string();
-            self.dirty = true;
-            drop(guard);
-            self.record_change("display", "theme", &old, &new);
-            return;
-        }
+        display.theme = match theme_idx {
+            0 => Theme::Light,
+            1 => Theme::Dark,
+            _ => Theme::System,
+        };
 
         ui.add_space(8.0);
-        let old_hc = guard.display.high_contrast;
-        ui.checkbox(&mut guard.display.high_contrast, "High contrast");
-        if guard.display.high_contrast != old_hc {
-            self.dirty = true;
-        }
+        ui.checkbox(&mut display.high_contrast, "High contrast");
+        ui.checkbox(&mut display.night_light, "Night light");
 
-        let old_nl = guard.display.night_light;
-        ui.checkbox(&mut guard.display.night_light, "Night light");
-        if guard.display.night_light != old_nl {
-            self.dirty = true;
-        }
-
-        let mut scale = guard.display.scaling_factor as f32;
+        let mut scale = display.scaling_factor as f32;
         ui.add_space(8.0);
         ui.label("Display scaling");
         if ui
             .add(egui::Slider::new(&mut scale, 0.5..=3.0).step_by(0.25))
             .changed()
         {
-            guard.display.scaling_factor = scale as f64;
-            self.dirty = true;
+            display.scaling_factor = scale as f64;
         }
+
+        commit_if_changed!(self, snapshot, display, update_display);
     }
 
     fn render_audio(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").audio.clone();
+        let mut audio = snapshot.clone();
 
-        let mut volume = guard.audio.master_volume as f32;
+        let mut volume = audio.master_volume as f32;
         ui.label("Master Volume");
         if ui
             .add(egui::Slider::new(&mut volume, 0.0..=100.0).suffix("%"))
             .changed()
         {
-            guard.audio.master_volume = volume as u8;
-            self.dirty = true;
+            audio.master_volume = volume as u8;
         }
 
-        let old_muted = guard.audio.muted;
-        ui.checkbox(&mut guard.audio.muted, "Muted");
-        if guard.audio.muted != old_muted {
-            self.dirty = true;
-        }
+        ui.checkbox(&mut audio.muted, "Muted");
 
         ui.add_space(8.0);
         ui.label("Output device");
-        if ui
-            .text_edit_singleline(&mut guard.audio.output_device)
-            .changed()
-        {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut audio.output_device);
 
         ui.add_space(8.0);
-        let mut input_vol = guard.audio.input_volume as f32;
+        let mut input_vol = audio.input_volume as f32;
         ui.label("Input Volume");
         if ui
             .add(egui::Slider::new(&mut input_vol, 0.0..=100.0).suffix("%"))
             .changed()
         {
-            guard.audio.input_volume = input_vol as u8;
-            self.dirty = true;
+            audio.input_volume = input_vol as u8;
         }
+
+        commit_if_changed!(self, snapshot, audio, update_audio);
     }
 
     fn render_network(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").network.clone();
+        let mut network = snapshot.clone();
 
-        macro_rules! toggle {
-            ($field:expr, $label:expr) => {{
-                let old = $field;
-                ui.checkbox(&mut $field, $label);
-                if $field != old {
-                    self.dirty = true;
-                }
-            }};
-        }
-        toggle!(guard.network.wifi_enabled, "WiFi");
-        toggle!(guard.network.bluetooth_enabled, "Bluetooth");
-        toggle!(guard.network.firewall_enabled, "Firewall");
-        toggle!(guard.network.vpn_enabled, "VPN");
+        ui.checkbox(&mut network.wifi_enabled, "WiFi");
+        ui.checkbox(&mut network.bluetooth_enabled, "Bluetooth");
+        ui.checkbox(&mut network.firewall_enabled, "Firewall");
+        ui.checkbox(&mut network.vpn_enabled, "VPN");
 
         ui.add_space(8.0);
         ui.label("Hostname");
-        if ui
-            .text_edit_singleline(&mut guard.network.hostname)
-            .changed()
-        {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut network.hostname);
 
         ui.add_space(8.0);
         ui.label("DNS Servers");
-        for dns in &guard.network.dns_servers {
+        for dns in &network.dns_servers {
             ui.label(format!("  {dns}"));
         }
+
+        commit_if_changed!(self, snapshot, network, update_network);
     }
 
     fn render_privacy(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").privacy.clone();
+        let mut privacy = snapshot.clone();
 
-        let old_sl = guard.privacy.screen_lock_enabled;
-        ui.checkbox(&mut guard.privacy.screen_lock_enabled, "Screen lock");
-        if guard.privacy.screen_lock_enabled != old_sl {
-            self.dirty = true;
-        }
+        ui.checkbox(&mut privacy.screen_lock_enabled, "Screen lock");
 
-        let mut timeout = guard.privacy.screen_lock_timeout_secs as f32;
+        let mut timeout = privacy.screen_lock_timeout_secs as f32;
         ui.label("Lock timeout");
         if ui
             .add(egui::Slider::new(&mut timeout, 30.0..=3600.0).suffix("s"))
             .changed()
         {
-            guard.privacy.screen_lock_timeout_secs = timeout as u32;
-            self.dirty = true;
+            privacy.screen_lock_timeout_secs = timeout as u32;
         }
 
         ui.add_space(8.0);
-        macro_rules! toggle {
-            ($field:expr, $label:expr) => {{
-                let old = $field;
-                ui.checkbox(&mut $field, $label);
-                if $field != old {
-                    self.dirty = true;
-                }
-            }};
-        }
-        toggle!(guard.privacy.location_enabled, "Location services");
-        toggle!(guard.privacy.telemetry_enabled, "Telemetry");
-        toggle!(guard.privacy.camera_enabled, "Camera access");
-        toggle!(guard.privacy.microphone_enabled, "Microphone access");
-        toggle!(
-            guard.privacy.agent_approval_required,
-            "Require approval for agent actions"
+        ui.checkbox(&mut privacy.location_enabled, "Location services");
+        ui.checkbox(&mut privacy.telemetry_enabled, "Telemetry");
+        ui.checkbox(&mut privacy.camera_enabled, "Camera access");
+        ui.checkbox(&mut privacy.microphone_enabled, "Microphone access");
+        ui.checkbox(
+            &mut privacy.agent_approval_required,
+            "Require approval for agent actions",
         );
+
+        commit_if_changed!(self, snapshot, privacy, update_privacy);
     }
 
     fn render_locale(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").locale.clone();
+        let mut locale = snapshot.clone();
 
         ui.label("Language");
-        if ui
-            .text_edit_singleline(&mut guard.locale.language)
-            .changed()
-        {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut locale.language);
 
         ui.add_space(8.0);
         ui.label("Region");
-        if ui.text_edit_singleline(&mut guard.locale.region).changed() {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut locale.region);
 
         ui.add_space(8.0);
         ui.label("Timezone");
-        if ui
-            .text_edit_singleline(&mut guard.locale.timezone)
-            .changed()
-        {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut locale.timezone);
 
         ui.add_space(8.0);
-        let old_24h = guard.locale.use_24h_clock;
-        ui.checkbox(&mut guard.locale.use_24h_clock, "Use 24-hour clock");
-        if guard.locale.use_24h_clock != old_24h {
-            self.dirty = true;
-        }
+        ui.checkbox(&mut locale.use_24h_clock, "Use 24-hour clock");
 
         ui.add_space(8.0);
         ui.label("Keyboard layout");
-        if ui
-            .text_edit_singleline(&mut guard.locale.keyboard_layout)
-            .changed()
-        {
-            self.dirty = true;
-        }
+        ui.text_edit_singleline(&mut locale.keyboard_layout);
+
+        commit_if_changed!(self, snapshot, locale, update_locale);
     }
 
     fn render_power(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self.state.read().expect("lock poisoned").power.clone();
+        let mut power = snapshot.clone();
 
-        let mut profile_idx = match guard.power.power_profile {
+        let mut profile_idx = match power.power_profile {
             PowerProfile::Performance => 0,
             PowerProfile::Balanced => 1,
             PowerProfile::PowerSaver => 2,
         };
-        let old_idx = profile_idx;
         ui.label("Power profile");
         egui::ComboBox::from_id_salt("power_profile")
             .selected_text(match profile_idx {
@@ -409,71 +314,57 @@ impl VidhanaApp {
                 ui.selectable_value(&mut profile_idx, 1, "Balanced");
                 ui.selectable_value(&mut profile_idx, 2, "Power Saver");
             });
-        if profile_idx != old_idx {
-            guard.power.power_profile = match profile_idx {
-                0 => PowerProfile::Performance,
-                2 => PowerProfile::PowerSaver,
-                _ => PowerProfile::Balanced,
-            };
-            self.dirty = true;
-        }
+        power.power_profile = match profile_idx {
+            0 => PowerProfile::Performance,
+            2 => PowerProfile::PowerSaver,
+            _ => PowerProfile::Balanced,
+        };
 
         ui.add_space(8.0);
-        let old_lid = guard.power.suspend_on_lid_close;
-        ui.checkbox(
-            &mut guard.power.suspend_on_lid_close,
-            "Suspend on lid close",
-        );
-        if guard.power.suspend_on_lid_close != old_lid {
-            self.dirty = true;
-        }
+        ui.checkbox(&mut power.suspend_on_lid_close, "Suspend on lid close");
 
-        let mut suspend_min = guard.power.suspend_timeout_minutes as f32;
+        let mut suspend_min = power.suspend_timeout_minutes as f32;
         ui.label("Suspend after");
         if ui
             .add(egui::Slider::new(&mut suspend_min, 5.0..=120.0).suffix(" min"))
             .changed()
         {
-            guard.power.suspend_timeout_minutes = suspend_min as u32;
-            self.dirty = true;
+            power.suspend_timeout_minutes = suspend_min as u32;
         }
 
-        let mut display_min = guard.power.display_off_timeout_minutes as f32;
+        let mut display_min = power.display_off_timeout_minutes as f32;
         ui.label("Display off after");
         if ui
             .add(egui::Slider::new(&mut display_min, 1.0..=60.0).suffix(" min"))
             .changed()
         {
-            guard.power.display_off_timeout_minutes = display_min as u32;
-            self.dirty = true;
+            power.display_off_timeout_minutes = display_min as u32;
         }
+
+        commit_if_changed!(self, snapshot, power, update_power);
     }
 
     fn render_accessibility(&mut self, ui: &mut egui::Ui) {
-        let mut guard = self.state.write().unwrap();
+        let snapshot = self
+            .state
+            .read()
+            .expect("lock poisoned")
+            .accessibility
+            .clone();
+        let mut a11y = snapshot.clone();
 
-        macro_rules! toggle {
-            ($field:expr, $label:expr) => {{
-                let old = $field;
-                ui.checkbox(&mut $field, $label);
-                if $field != old {
-                    self.dirty = true;
-                }
-            }};
-        }
-        toggle!(guard.accessibility.large_text, "Large text");
-        toggle!(guard.accessibility.reduce_motion, "Reduce motion");
-        toggle!(guard.accessibility.screen_reader, "Screen reader");
-        toggle!(guard.accessibility.sticky_keys, "Sticky keys");
+        ui.checkbox(&mut a11y.large_text, "Large text");
+        ui.checkbox(&mut a11y.reduce_motion, "Reduce motion");
+        ui.checkbox(&mut a11y.screen_reader, "Screen reader");
+        ui.checkbox(&mut a11y.sticky_keys, "Sticky keys");
 
         ui.add_space(8.0);
-        let mut cursor_idx = match guard.accessibility.cursor_size {
+        let mut cursor_idx = match a11y.cursor_size {
             CursorSize::Small => 0,
             CursorSize::Default => 1,
             CursorSize::Large => 2,
             CursorSize::ExtraLarge => 3,
         };
-        let old_cursor = cursor_idx;
         ui.label("Cursor size");
         egui::ComboBox::from_id_salt("cursor_size")
             .selected_text(match cursor_idx {
@@ -488,15 +379,14 @@ impl VidhanaApp {
                 ui.selectable_value(&mut cursor_idx, 2, "Large");
                 ui.selectable_value(&mut cursor_idx, 3, "Extra Large");
             });
-        if cursor_idx != old_cursor {
-            guard.accessibility.cursor_size = match cursor_idx {
-                0 => CursorSize::Small,
-                2 => CursorSize::Large,
-                3 => CursorSize::ExtraLarge,
-                _ => CursorSize::Default,
-            };
-            self.dirty = true;
-        }
+        a11y.cursor_size = match cursor_idx {
+            0 => CursorSize::Small,
+            2 => CursorSize::Large,
+            3 => CursorSize::ExtraLarge,
+            _ => CursorSize::Default,
+        };
+
+        commit_if_changed!(self, snapshot, a11y, update_accessibility);
     }
 
     fn render_history(&self, ui: &mut egui::Ui) {
@@ -536,7 +426,9 @@ impl VidhanaApp {
         ui.label(format!("Vidhana v{}", env!("CARGO_PKG_VERSION")));
         ui.label("AGNOS System Settings");
         ui.add_space(8.0);
-        ui.label("Sanskrit: \u{0935}\u{093F}\u{0927}\u{093E}\u{0928} (regulation, constitution, arrangement)");
+        ui.label(
+            "Sanskrit: \u{0935}\u{093F}\u{0927}\u{093E}\u{0928} (regulation, constitution, arrangement)",
+        );
         ui.add_space(16.0);
         ui.label(
             "Categories: Display, Audio, Network, Privacy, Language & Region, Power, Accessibility",
@@ -608,22 +500,5 @@ mod tests {
         let (state, service) = test_service();
         let app = VidhanaApp::new(state, service);
         assert_eq!(app.active_panel, Panel::Display);
-        assert!(!app.dirty);
-    }
-
-    #[test]
-    fn test_save_if_dirty() {
-        let (state, service) = test_service();
-        let mut app = VidhanaApp::new(state.clone(), service.clone());
-
-        // Modify and mark dirty
-        state.write().unwrap().display.brightness = 42;
-        app.dirty = true;
-        app.save_if_dirty();
-        assert!(!app.dirty);
-
-        // Verify persisted
-        let loaded = service.store.load_state().unwrap().unwrap();
-        assert_eq!(loaded.display.brightness, 42);
     }
 }
