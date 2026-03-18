@@ -7,6 +7,7 @@ members = [
     "crates/vidhana-ai",
     "crates/vidhana-settings",
     "crates/vidhana-mcp",
+    "crates/vidhana-backend",
 ]
 
 [workspace.dependencies]
@@ -40,6 +41,7 @@ vidhana-ui = { path = "crates/vidhana-ui" }
 vidhana-ai = { path = "crates/vidhana-ai" }
 vidhana-settings = { path = "crates/vidhana-settings" }
 vidhana-mcp = { path = "crates/vidhana-mcp" }
+vidhana-backend = { path = "crates/vidhana-backend" }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -8,6 +8,7 @@ license = "GPL-3.0"
 [dependencies]
 vidhana-core = { path = "../vidhana-core" }
 vidhana-settings = { path = "../vidhana-settings" }
+vidhana-backend = { path = "../vidhana-backend" }
 vidhana-ai = { path = "../vidhana-ai" }
 serde = { workspace = true }
 serde_json = { workspace = true }

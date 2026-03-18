@@ -3290,6 +3290,7 @@ dependencies = [
  "tracing-subscriber",
  "vidhana-ai",
  "vidhana-api",
+ "vidhana-backend",
  "vidhana-core",
  "vidhana-mcp",
  "vidhana-settings",
@@ -3301,8 +3302,10 @@ name = "vidhana-ai"
 version = "2026.3.18"
 dependencies = [
  "chrono",
+ "reqwest",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "vidhana-core",
 ]
@@ -3322,6 +3325,20 @@ dependencies = [
  "tower-http",
  "tracing",
  "vidhana-ai",
+ "vidhana-backend",
+ "vidhana-core",
+ "vidhana-settings",
+]
+
+[[package]]
+name = "vidhana-backend"
+version = "2026.3.18"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
  "vidhana-core",
  "vidhana-settings",
 ]
@@ -3347,6 +3364,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "vidhana-backend",
  "vidhana-core",
  "vidhana-settings",
 ]
@@ -3373,6 +3391,7 @@ dependencies = [
  "eframe",
  "egui",
  "tracing",
+ "vidhana-backend",
  "vidhana-core",
  "vidhana-settings",
 ]

@@ -339,6 +339,77 @@ fn extract_timezone(input: &str) -> Option<String> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// Hoosh integration — LLM-powered NL parsing with local fallback
+// ---------------------------------------------------------------------------
+
+/// Client for the hoosh NL service.
+pub struct HooshClient {
+    base_url: String,
+    client: reqwest::Client,
+}
+
+#[derive(serde::Serialize)]
+struct HooshRequest {
+    text: String,
+    context: String,
+}
+
+impl HooshClient {
+    pub fn new(base_url: &str) -> Self {
+        Self {
+            base_url: base_url.to_string(),
+            client: reqwest::Client::new(),
+        }
+    }
+
+    /// Parse a natural language settings command via hoosh.
+    /// Returns None if hoosh is unavailable or can't parse the input.
+    pub async fn parse(&self, input: &str) -> Option<SettingsIntent> {
+        let request = HooshRequest {
+            text: input.to_string(),
+            context: "system_settings".to_string(),
+        };
+
+        let resp = self
+            .client
+            .post(format!("{}/v1/parse", self.base_url))
+            .json(&request)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+            .ok()?;
+
+        if !resp.status().is_success() {
+            return None;
+        }
+
+        resp.json::<SettingsIntent>().await.ok()
+    }
+}
+
+/// Parse a settings command with hoosh fallback to local parser.
+///
+/// Tries hoosh first (if client provided). If hoosh is unavailable or
+/// returns no result, falls back to the local keyword-based parser.
+pub async fn parse_with_hoosh(input: &str, hoosh: Option<&HooshClient>) -> Option<SettingsIntent> {
+    // Try hoosh first
+    if let Some(client) = hoosh {
+        match client.parse(input).await {
+            Some(intent) => {
+                tracing::debug!("Parsed via hoosh: {:?}", intent.key);
+                return Some(intent);
+            }
+            None => {
+                tracing::debug!("Hoosh unavailable or no match, falling back to local parser");
+            }
+        }
+    }
+
+    // Local fallback
+    parse_settings_command(input)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,5 +554,34 @@ mod tests {
         let intent = parse_settings_command("set brightness to 80").unwrap();
         let json = serde_json::to_string(&intent).unwrap();
         assert!(json.contains("brightness"));
+    }
+
+    #[test]
+    fn test_hoosh_client_creation() {
+        let client = HooshClient::new("http://127.0.0.1:8088");
+        assert_eq!(client.base_url, "http://127.0.0.1:8088");
+    }
+
+    #[tokio::test]
+    async fn test_parse_with_hoosh_no_client() {
+        // Without hoosh client, should fall back to local parser
+        let intent = parse_with_hoosh("turn off wifi", None).await;
+        assert!(intent.is_some());
+        assert_eq!(intent.unwrap().key, "wifi_enabled");
+    }
+
+    #[tokio::test]
+    async fn test_parse_with_hoosh_unavailable() {
+        // Hoosh at a bad URL should gracefully fall back
+        let client = HooshClient::new("http://127.0.0.1:1");
+        let intent = parse_with_hoosh("turn off wifi", Some(&client)).await;
+        assert!(intent.is_some());
+        assert_eq!(intent.unwrap().key, "wifi_enabled");
+    }
+
+    #[tokio::test]
+    async fn test_parse_with_hoosh_unrecognized() {
+        let intent = parse_with_hoosh("what is the meaning of life", None).await;
+        assert!(intent.is_none());
     }
 }

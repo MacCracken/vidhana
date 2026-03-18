@@ -1,17 +1,15 @@
 [package]
-name = "vidhana-mcp"
+name = "vidhana-backend"
 version = "2026.3.18"
 edition = "2024"
-description = "MCP tool server for Vidhana — AGNOS system settings"
+description = "System backends and settings service for Vidhana — AGNOS system settings"
 license = "GPL-3.0"
 
 [dependencies]
 vidhana-core = { path = "../vidhana-core" }
 vidhana-settings = { path = "../vidhana-settings" }
-vidhana-backend = { path = "../vidhana-backend" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }

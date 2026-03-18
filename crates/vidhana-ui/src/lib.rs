@@ -3,8 +3,9 @@
 //! Tabbed interface for managing all AGNOS system settings.
 
 use std::sync::Arc;
+use vidhana_backend::SettingsService;
 use vidhana_core::*;
-use vidhana_settings::{ChangeSource, SettingsChange, SettingsStore};
+use vidhana_settings::ChangeSource;
 
 /// Active settings panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,16 +54,16 @@ impl Panel {
 /// Main Vidhana application
 pub struct VidhanaApp {
     state: SharedState,
-    store: Arc<SettingsStore>,
+    service: Arc<SettingsService>,
     active_panel: Panel,
     dirty: bool,
 }
 
 impl VidhanaApp {
-    pub fn new(state: SharedState, store: Arc<SettingsStore>) -> Self {
+    pub fn new(state: SharedState, service: Arc<SettingsService>) -> Self {
         Self {
             state,
-            store,
+            service,
             active_panel: Panel::Display,
             dirty: false,
         }
@@ -71,7 +72,7 @@ impl VidhanaApp {
     fn save_if_dirty(&mut self) {
         if self.dirty {
             let guard = self.state.read().unwrap();
-            if let Err(e) = self.store.save_state(&guard) {
+            if let Err(e) = self.service.store.save_state(&guard) {
                 tracing::error!("Failed to save settings: {e}");
             }
             self.dirty = false;
@@ -79,7 +80,7 @@ impl VidhanaApp {
     }
 
     fn record_change(&self, category: &str, key: &str, old: &str, new: &str) {
-        let change = SettingsChange {
+        let change = vidhana_settings::SettingsChange {
             timestamp: chrono::Utc::now(),
             category: category.to_string(),
             key: key.to_string(),
@@ -87,7 +88,7 @@ impl VidhanaApp {
             new_value: new.to_string(),
             source: ChangeSource::Gui,
         };
-        if let Err(e) = self.store.record_change(&change) {
+        if let Err(e) = self.service.store.record_change(&change) {
             tracing::error!("Failed to record change: {e}");
         }
     }
@@ -499,7 +500,7 @@ impl VidhanaApp {
     }
 
     fn render_history(&self, ui: &mut egui::Ui) {
-        match self.store.recent_changes(50) {
+        match self.service.store.recent_changes(50) {
             Ok(changes) if changes.is_empty() => {
                 ui.label("No changes recorded yet.");
             }
@@ -546,7 +547,7 @@ impl VidhanaApp {
 }
 
 /// Launch the Vidhana GUI application
-pub fn run_app(state: SharedState, store: Arc<SettingsStore>) {
+pub fn run_app(state: SharedState, service: Arc<SettingsService>) {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Vidhana \u{2014} System Settings")
@@ -557,7 +558,7 @@ pub fn run_app(state: SharedState, store: Arc<SettingsStore>) {
     let _ = eframe::run_native(
         "Vidhana",
         options,
-        Box::new(move |_cc| Ok(Box::new(VidhanaApp::new(state, store)))),
+        Box::new(move |_cc| Ok(Box::new(VidhanaApp::new(state, service)))),
     );
 }
 
@@ -565,14 +566,23 @@ pub fn run_app(state: SharedState, store: Arc<SettingsStore>) {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use vidhana_backend::NoopBackend;
+    use vidhana_settings::SettingsStore;
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    fn test_store() -> Arc<SettingsStore> {
+    fn test_service() -> (SharedState, Arc<SettingsService>) {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir =
             std::env::temp_dir().join(format!("vidhana-ui-test-{}-{}", std::process::id(), id));
-        Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap())
+        let store = Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap());
+        let state = new_shared_state(VidhanaConfig::default());
+        let service = Arc::new(SettingsService::new(
+            state.clone(),
+            store,
+            Arc::new(NoopBackend),
+        ));
+        (state, service)
     }
 
     #[test]
@@ -595,18 +605,16 @@ mod tests {
 
     #[test]
     fn test_app_creation() {
-        let state = new_shared_state(VidhanaConfig::default());
-        let store = test_store();
-        let app = VidhanaApp::new(state, store);
+        let (state, service) = test_service();
+        let app = VidhanaApp::new(state, service);
         assert_eq!(app.active_panel, Panel::Display);
         assert!(!app.dirty);
     }
 
     #[test]
     fn test_save_if_dirty() {
-        let state = new_shared_state(VidhanaConfig::default());
-        let store = test_store();
-        let mut app = VidhanaApp::new(state.clone(), store.clone());
+        let (state, service) = test_service();
+        let mut app = VidhanaApp::new(state.clone(), service.clone());
 
         // Modify and mark dirty
         state.write().unwrap().display.brightness = 42;
@@ -615,7 +623,7 @@ mod tests {
         assert!(!app.dirty);
 
         // Verify persisted
-        let loaded = store.load_state().unwrap().unwrap();
+        let loaded = service.store.load_state().unwrap().unwrap();
         assert_eq!(loaded.display.brightness, 42);
     }
 }

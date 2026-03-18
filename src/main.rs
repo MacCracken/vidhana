@@ -4,6 +4,7 @@
 
 use clap::Parser;
 use std::sync::Arc;
+use vidhana_backend::{LinuxBackend, SettingsService};
 use vidhana_core::*;
 
 #[derive(Parser)]
@@ -72,15 +73,22 @@ fn main() {
         tracing::info!("Loaded persisted settings from {}", config.data_dir);
     }
 
+    // Detect system backends and sync OS state
+    let backend = Arc::new(LinuxBackend::detect());
+    backend.log_capabilities();
+
+    let service = Arc::new(SettingsService::new(state.clone(), store, backend));
+    service.sync_from_os();
+
     if cli.mcp {
         tracing::info!("Starting MCP server on stdin/stdout");
-        run_mcp_server(state, store);
+        run_mcp_server(service);
         return;
     }
 
     if cli.gui {
         tracing::info!("Launching GUI");
-        vidhana_ui::run_app(state, store);
+        vidhana_ui::run_app(state, service);
         return;
     }
 
@@ -90,9 +98,12 @@ fn main() {
         let addr = format!("{}:{}", cli.bind, cli.port);
         tracing::info!("Starting HTTP API on {addr}");
 
+        let hoosh = Arc::new(vidhana_ai::HooshClient::new(&config.hoosh_url));
+
         let app_state = vidhana_api::AppState {
             settings: state,
-            store,
+            service,
+            hoosh: Some(hoosh),
         };
 
         let app = vidhana_api::router(app_state)
@@ -107,7 +118,7 @@ fn main() {
     });
 }
 
-fn run_mcp_server(state: SharedState, store: Arc<vidhana_settings::SettingsStore>) {
+fn run_mcp_server(service: Arc<SettingsService>) {
     use std::io::{self, BufRead, Write};
 
     let stdin = io::stdin();
@@ -146,7 +157,7 @@ fn run_mcp_server(state: SharedState, store: Arc<vidhana_settings::SettingsStore
                         .to_string(),
                     arguments: params.get("arguments").cloned().unwrap_or_default(),
                 };
-                let result = vidhana_mcp::handle_tool_call(&call, &state, &store);
+                let result = vidhana_mcp::handle_tool_call(&call, &service);
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": request.get("id"),

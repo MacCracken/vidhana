@@ -8,6 +8,7 @@ license = "GPL-3.0"
 [dependencies]
 vidhana-core = { path = "../vidhana-core" }
 vidhana-settings = { path = "../vidhana-settings" }
+vidhana-backend = { path = "../vidhana-backend" }
 egui = { workspace = true }
 eframe = { workspace = true }
 chrono = { workspace = true }

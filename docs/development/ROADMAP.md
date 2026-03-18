@@ -4,18 +4,19 @@
 
 ## Current State
 
-Vidhana has 6 crates with MVP persistence fully wired:
+Vidhana has 7 crates with full v1 architecture:
 
 | Crate | Status | Notes |
 |-------|--------|-------|
-| `vidhana-core` | MVP | Types, shared state, TOML config, validation (clamp ranges) |
-| `vidhana-api` | MVP | REST CRUD + PATCH for all 7 categories, history endpoints, JSON errors |
-| `vidhana-ui` | MVP | egui GUI with all 7 panels + History + About, auto-save on change |
-| `vidhana-ai` | Scaffold | Keyword-based NL parsing, no LLM/hoosh integration |
-| `vidhana-settings` | MVP | TOML persistence + SQLite audit trail, wired into all mutation paths |
-| `vidhana-mcp` | MVP | 5 MCP tools with persistence and change recording |
+| `vidhana-core` | v1 | Types, shared state, TOML config, validation (clamp ranges) |
+| `vidhana-api` | v1 | REST CRUD + PATCH, history, NL endpoint, hoosh integration |
+| `vidhana-ui` | v1 | egui GUI with 9 panels (History, status bar), auto-save |
+| `vidhana-ai` | v1 | Keyword NL parser + async hoosh HTTP client with fallback |
+| `vidhana-settings` | v1 | TOML persistence + SQLite audit trail |
+| `vidhana-mcp` | v1 | 6 MCP tools + initialize handshake, via SettingsService |
+| `vidhana-backend` | v1 | SystemBackend trait, LinuxBackend (brightnessctl/wpctl/nmcli/etc), SettingsService mediator |
 
-Settings persist automatically via TOML on every mutation (API, MCP, GUI). All changes are recorded in SQLite audit history. No OS-level system backends yet — settings are stored but not applied to the OS.
+All mutations flow through `SettingsService`: validate → apply to OS → update state → persist → audit. `LinuxBackend` probes for CLI tools at startup and gracefully degrades when tools are missing. Hoosh integration provides LLM-powered NL parsing with automatic fallback to the local keyword parser.
 
 ---
 
@@ -70,27 +71,30 @@ Goal: Real system integration, natural language control, production-quality erro
 
 ### System Backends
 
-- [ ] Display: read/write brightness via sysfs (`/sys/class/backlight/`)
+- [x] Display: read/write brightness via `brightnessctl`
 - [ ] Display: theme integration (GTK/Qt theme switching, or AGNOS-specific)
 - [ ] Display: night light via gammastep/wlsunset or similar
-- [ ] Audio: PipeWire/PulseAudio volume control via `libpulse` or `wpctl`
+- [x] Audio: PipeWire volume control via `wpctl`, PulseAudio fallback via `pactl`
 - [ ] Audio: enumerate and switch output/input devices
-- [ ] Network: WiFi toggle via NetworkManager D-Bus
-- [ ] Network: Bluetooth toggle via bluez D-Bus
+- [x] Network: WiFi toggle via `nmcli radio wifi`
+- [x] Network: Bluetooth toggle via `bluetoothctl power`
 - [ ] Network: read real hostname, DNS from `/etc/resolv.conf` or systemd-resolved
 - [ ] Network: firewall status via nftables/iptables
-- [ ] Power: read/set power profile via `power-profiles-daemon` D-Bus
+- [x] Power: read/set power profile via `powerprofilesctl`
 - [ ] Power: configure suspend/lid-close via logind D-Bus
-- [ ] Locale: read/set timezone via `timedatectl` / systemd-timedated D-Bus
+- [x] Locale: read/set timezone via `timedatectl`
 - [ ] Locale: keyboard layout via XKB / sway input config
 - [ ] Accessibility: integrate with AT-SPI / orca for screen reader
 - [ ] Privacy: screen lock via swaylock/swayidle or loginctl
+- [x] Backend trait + LinuxBackend with auto-detection of available tools
+- [x] NoopBackend for tests and sandboxed environments
+- [x] SettingsService mediator: validate → apply → persist → audit
 
 ### Natural Language
 
 - [x] Add `/v1/nl` API endpoint that accepts natural language and returns structured intent
-- [ ] Integrate with hoosh (8088) for LLM-powered NL parsing as upgrade path
-- [x] Fallback to local keyword parser when hoosh is unavailable (current default)
+- [x] Integrate with hoosh (8088) for LLM-powered NL parsing via HooshClient
+- [x] Fallback to local keyword parser when hoosh is unavailable
 - [ ] Add NL input bar to GUI (text field at top of settings)
 
 ### API Improvements
