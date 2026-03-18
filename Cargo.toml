@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vidhana-core",
+    "crates/vidhana-api",
+    "crates/vidhana-ui",
+    "crates/vidhana-ai",
+    "crates/vidhana-settings",
+    "crates/vidhana-mcp",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+egui = "0.33"
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "wgpu", "x11", "wayland"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+toml = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[package]
+name = "vidhana"
+version = "2026.3.18"
+edition = "2024"
+description = "Vidhana — AGNOS system settings application"
+license = "GPL-3.0"
+
+[dependencies]
+vidhana-core = { path = "crates/vidhana-core" }
+vidhana-api = { path = "crates/vidhana-api" }
+vidhana-ui = { path = "crates/vidhana-ui" }
+vidhana-ai = { path = "crates/vidhana-ai" }
+vidhana-settings = { path = "crates/vidhana-settings" }
+vidhana-mcp = { path = "crates/vidhana-mcp" }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+
+[[bin]]
+name = "vidhana"
+path = "src/main.rs"

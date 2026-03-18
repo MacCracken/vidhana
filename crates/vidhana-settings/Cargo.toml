@@ -1,0 +1,16 @@
+[package]
+name = "vidhana-settings"
+version = "2026.3.18"
+edition = "2024"
+description = "Settings persistence and storage for Vidhana"
+license = "GPL-3.0"
+
+[dependencies]
+vidhana-core = { path = "../vidhana-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+toml = { workspace = true }
+rusqlite = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "vidhana-ai"
+version = "2026.3.18"
+edition = "2024"
+description = "Natural language settings management for Vidhana"
+license = "GPL-3.0"
+
+[dependencies]
+vidhana-core = { path = "../vidhana-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }

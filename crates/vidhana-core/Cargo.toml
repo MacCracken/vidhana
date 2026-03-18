@@ -1,0 +1,12 @@
+[package]
+name = "vidhana-core"
+version = "2026.3.18"
+edition = "2024"
+description = "Core types and state for Vidhana — AGNOS system settings"
+license = "GPL-3.0"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }

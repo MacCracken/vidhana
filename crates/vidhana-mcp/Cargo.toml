@@ -1,0 +1,14 @@
+[package]
+name = "vidhana-mcp"
+version = "2026.3.18"
+edition = "2024"
+description = "MCP tool server for Vidhana — AGNOS system settings"
+license = "GPL-3.0"
+
+[dependencies]
+vidhana-core = { path = "../vidhana-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

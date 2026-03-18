@@ -1,0 +1,12 @@
+[package]
+name = "vidhana-ui"
+version = "2026.3.18"
+edition = "2024"
+description = "Desktop GUI for Vidhana — egui/eframe settings interface"
+license = "GPL-3.0"
+
+[dependencies]
+vidhana-core = { path = "../vidhana-core" }
+egui = { workspace = true }
+eframe = { workspace = true }
+tracing = { workspace = true }
