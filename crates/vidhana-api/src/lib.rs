@@ -589,4 +589,319 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(parsed["intent"].is_null());
     }
+
+    // --- Audio endpoint tests ---
+
+    #[tokio::test]
+    async fn test_get_audio() {
+        let app = router(test_app());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/audio")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_audio() {
+        let state = test_app();
+        let app = router(state.clone());
+        let audio = AudioSettings {
+            master_volume: 42,
+            muted: true,
+            ..AudioSettings::default()
+        };
+        let resp = app
+            .oneshot(
+                Request::post("/v1/settings/audio")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&audio).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let g = state.settings.read().unwrap();
+        assert_eq!(g.audio.master_volume, 42);
+        assert!(g.audio.muted);
+    }
+
+    #[tokio::test]
+    async fn test_patch_audio() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/settings/audio")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"master_volume": 33}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(state.settings.read().unwrap().audio.master_volume, 33);
+        assert!(!state.settings.read().unwrap().audio.muted); // unchanged
+    }
+
+    // --- Network endpoint tests ---
+
+    #[tokio::test]
+    async fn test_get_network() {
+        let app = router(test_app());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/network")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_network() {
+        let state = test_app();
+        let app = router(state.clone());
+        let mut net = NetworkSettings::default();
+        net.wifi_enabled = false;
+        net.hostname = "testbox".to_string();
+        let resp = app
+            .oneshot(
+                Request::post("/v1/settings/network")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&net).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let g = state.settings.read().unwrap();
+        assert!(!g.network.wifi_enabled);
+        assert_eq!(g.network.hostname, "testbox");
+    }
+
+    #[tokio::test]
+    async fn test_patch_network() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/settings/network")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"wifi_enabled": false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(!state.settings.read().unwrap().network.wifi_enabled);
+        assert!(state.settings.read().unwrap().network.bluetooth_enabled); // unchanged
+    }
+
+    // --- Locale endpoint tests ---
+
+    #[tokio::test]
+    async fn test_get_locale() {
+        let app = router(test_app());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/locale")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_locale() {
+        let state = test_app();
+        let app = router(state.clone());
+        let mut locale = LocaleSettings::default();
+        locale.timezone = "America/Chicago".to_string();
+        let resp = app
+            .oneshot(
+                Request::post("/v1/settings/locale")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&locale).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            state.settings.read().unwrap().locale.timezone,
+            "America/Chicago"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_patch_locale() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/settings/locale")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"language": "fr"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(state.settings.read().unwrap().locale.language, "fr");
+        assert_eq!(state.settings.read().unwrap().locale.region, "US"); // unchanged
+    }
+
+    // --- Power endpoint tests ---
+
+    #[tokio::test]
+    async fn test_get_power() {
+        let app = router(test_app());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/power")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_power() {
+        let state = test_app();
+        let app = router(state.clone());
+        let power = PowerSettings {
+            power_profile: PowerProfile::Performance,
+            ..PowerSettings::default()
+        };
+        let resp = app
+            .oneshot(
+                Request::post("/v1/settings/power")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&power).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            state.settings.read().unwrap().power.power_profile,
+            PowerProfile::Performance
+        );
+    }
+
+    #[tokio::test]
+    async fn test_patch_power() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/settings/power")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"suspend_timeout_minutes": 15}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            state.settings.read().unwrap().power.suspend_timeout_minutes,
+            15
+        );
+    }
+
+    // --- Accessibility endpoint tests ---
+
+    #[tokio::test]
+    async fn test_get_accessibility() {
+        let app = router(test_app());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/accessibility")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_accessibility() {
+        let state = test_app();
+        let app = router(state.clone());
+        let a11y = AccessibilitySettings {
+            large_text: true,
+            screen_reader: true,
+            ..AccessibilitySettings::default()
+        };
+        let resp = app
+            .oneshot(
+                Request::post("/v1/settings/accessibility")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&a11y).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let g = state.settings.read().unwrap();
+        assert!(g.accessibility.large_text);
+        assert!(g.accessibility.screen_reader);
+    }
+
+    #[tokio::test]
+    async fn test_patch_accessibility() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/settings/accessibility")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"large_text": true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(state.settings.read().unwrap().accessibility.large_text);
+        assert!(!state.settings.read().unwrap().accessibility.screen_reader); // unchanged
+    }
+
+    // --- Category history ---
+
+    #[tokio::test]
+    async fn test_category_history_display() {
+        let state = test_app();
+        let app = router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::get("/v1/settings/display/history")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
 }

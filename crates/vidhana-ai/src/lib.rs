@@ -584,4 +584,76 @@ mod tests {
         let intent = parse_with_hoosh("what is the meaning of life", None).await;
         assert!(intent.is_none());
     }
+
+    #[test]
+    fn test_parse_screen_lock_enable() {
+        let intent = parse_settings_command("enable screen lock").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Privacy);
+        assert_eq!(intent.key, "screen_lock_enabled");
+        assert_eq!(intent.value, Some("true".to_string()));
+    }
+
+    #[test]
+    fn test_parse_screen_lock_disable() {
+        let intent = parse_settings_command("disable auto lock").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Privacy);
+        assert_eq!(intent.key, "screen_lock_enabled");
+        assert_eq!(intent.value, Some("false".to_string()));
+    }
+
+    #[test]
+    fn test_parse_timezone_get() {
+        let intent = parse_settings_command("what timezone am I in").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Locale);
+        assert_eq!(intent.key, "timezone");
+        assert_eq!(intent.action, SettingsAction::Get);
+    }
+
+    #[test]
+    fn test_parse_timezone_set() {
+        let intent = parse_settings_command("set timezone to America/New_York").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Locale);
+        assert_eq!(intent.key, "timezone");
+        // Input is lowercased by parser
+        assert_eq!(intent.value, Some("america/new_york".to_string()));
+    }
+
+    #[test]
+    fn test_parse_language() {
+        let intent = parse_settings_command("show current language").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Locale);
+        assert_eq!(intent.key, "language");
+    }
+
+    #[test]
+    fn test_parse_volume_decrease() {
+        let intent = parse_settings_command("decrease the volume").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Audio);
+        assert_eq!(intent.action, SettingsAction::Decrease);
+    }
+
+    #[test]
+    fn test_parse_brightness_get() {
+        let intent = parse_settings_command("what is the current brightness").unwrap();
+        assert_eq!(intent.category, SettingsCategory::Display);
+        assert_eq!(intent.action, SettingsAction::Get);
+    }
+
+    #[test]
+    fn test_extract_timezone_slash_format() {
+        assert_eq!(
+            extract_timezone("set timezone to america/new_york"),
+            Some("america/new_york".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_timezone_equals() {
+        assert_eq!(extract_timezone("timezone = UTC"), Some("UTC".to_string()));
+    }
+
+    #[test]
+    fn test_extract_timezone_none() {
+        assert_eq!(extract_timezone("show timezone"), None);
+    }
 }

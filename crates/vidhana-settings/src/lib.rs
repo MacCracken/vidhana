@@ -283,4 +283,92 @@ mod tests {
         let parsed: ChangeSource = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, ChangeSource::Mcp);
     }
+
+    #[test]
+    fn test_all_change_sources_roundtrip() {
+        for source in [
+            ChangeSource::Gui,
+            ChangeSource::Api,
+            ChangeSource::Mcp,
+            ChangeSource::Cli,
+            ChangeSource::Agent,
+        ] {
+            let json = serde_json::to_string(&source).unwrap();
+            let parsed: ChangeSource = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, source);
+        }
+    }
+
+    #[test]
+    fn test_history_respects_limit() {
+        let store = temp_store();
+        for i in 0..10 {
+            store
+                .record_change(&SettingsChange {
+                    timestamp: chrono::Utc::now(),
+                    category: "display".to_string(),
+                    key: format!("key{i}"),
+                    old_value: "old".to_string(),
+                    new_value: "new".to_string(),
+                    source: ChangeSource::Api,
+                })
+                .unwrap();
+        }
+        let limited = store.recent_changes(3).unwrap();
+        assert_eq!(limited.len(), 3);
+        let all = store.recent_changes(100).unwrap();
+        assert_eq!(all.len(), 10);
+        std::fs::remove_dir_all(store.config_dir()).ok();
+    }
+
+    #[test]
+    fn test_history_desc_order() {
+        let store = temp_store();
+        for key in ["first", "second", "third"] {
+            store
+                .record_change(&SettingsChange {
+                    timestamp: chrono::Utc::now(),
+                    category: "display".to_string(),
+                    key: key.to_string(),
+                    old_value: "old".to_string(),
+                    new_value: "new".to_string(),
+                    source: ChangeSource::Api,
+                })
+                .unwrap();
+        }
+        let history = store.recent_changes(10).unwrap();
+        // Most recent first
+        assert_eq!(history[0].key, "third");
+        assert_eq!(history[2].key, "first");
+        std::fs::remove_dir_all(store.config_dir()).ok();
+    }
+
+    #[test]
+    fn test_config_dir_accessor() {
+        let store = temp_store();
+        assert!(store.config_dir().exists());
+        assert!(store.config_dir().is_dir());
+        std::fs::remove_dir_all(store.config_dir()).ok();
+    }
+
+    #[test]
+    fn test_multiple_stores_same_dir() {
+        let store1 = temp_store();
+        let dir = store1.config_dir().to_owned();
+        // Creating a second store in the same dir should work (idempotent schema)
+        let store2 = SettingsStore::new(dir.to_str().unwrap()).unwrap();
+        store1
+            .record_change(&SettingsChange {
+                timestamp: chrono::Utc::now(),
+                category: "display".to_string(),
+                key: "test".to_string(),
+                old_value: "a".to_string(),
+                new_value: "b".to_string(),
+                source: ChangeSource::Gui,
+            })
+            .unwrap();
+        let history = store2.recent_changes(10).unwrap();
+        assert_eq!(history.len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

@@ -556,4 +556,105 @@ mod tests {
         let changes = svc.store.recent_changes(10).unwrap();
         assert_eq!(changes.len(), 3);
     }
+
+    #[test]
+    fn test_update_privacy() {
+        let svc = test_service();
+        let settings = PrivacySettings {
+            telemetry_enabled: true,
+            camera_enabled: false,
+            ..PrivacySettings::default()
+        };
+        svc.update_privacy(settings, ChangeSource::Api).unwrap();
+        let g = svc.state.read().unwrap();
+        assert!(g.privacy.telemetry_enabled);
+        assert!(!g.privacy.camera_enabled);
+    }
+
+    #[test]
+    fn test_update_accessibility() {
+        let svc = test_service();
+        let settings = AccessibilitySettings {
+            large_text: true,
+            screen_reader: true,
+            ..AccessibilitySettings::default()
+        };
+        svc.update_accessibility(settings, ChangeSource::Gui)
+            .unwrap();
+        let g = svc.state.read().unwrap();
+        assert!(g.accessibility.large_text);
+        assert!(g.accessibility.screen_reader);
+    }
+
+    #[test]
+    fn test_patch_audio() {
+        let svc = test_service();
+        let result = svc
+            .patch_audio(serde_json::json!({"master_volume": 33}), ChangeSource::Api)
+            .unwrap();
+        assert_eq!(result.master_volume, 33);
+        assert!(!result.muted); // unchanged default
+    }
+
+    #[test]
+    fn test_patch_network() {
+        let svc = test_service();
+        let result = svc
+            .patch_network(
+                serde_json::json!({"wifi_enabled": false}),
+                ChangeSource::Api,
+            )
+            .unwrap();
+        assert!(!result.wifi_enabled);
+        assert!(result.bluetooth_enabled); // unchanged
+    }
+
+    #[test]
+    fn test_patch_privacy() {
+        let svc = test_service();
+        let result = svc
+            .patch_privacy(
+                serde_json::json!({"telemetry_enabled": true}),
+                ChangeSource::Api,
+            )
+            .unwrap();
+        assert!(result.telemetry_enabled);
+        assert!(result.screen_lock_enabled); // unchanged
+    }
+
+    #[test]
+    fn test_patch_locale() {
+        let svc = test_service();
+        let result = svc
+            .patch_locale(
+                serde_json::json!({"timezone": "Europe/London"}),
+                ChangeSource::Api,
+            )
+            .unwrap();
+        assert_eq!(result.timezone, "Europe/London");
+        assert_eq!(result.language, "en"); // unchanged
+    }
+
+    #[test]
+    fn test_patch_power() {
+        let svc = test_service();
+        let result = svc
+            .patch_power(
+                serde_json::json!({"suspend_timeout_minutes": 15}),
+                ChangeSource::Api,
+            )
+            .unwrap();
+        assert_eq!(result.suspend_timeout_minutes, 15);
+        assert_eq!(result.power_profile, PowerProfile::Balanced); // unchanged
+    }
+
+    #[test]
+    fn test_patch_accessibility() {
+        let svc = test_service();
+        let result = svc
+            .patch_accessibility(serde_json::json!({"large_text": true}), ChangeSource::Api)
+            .unwrap();
+        assert!(result.large_text);
+        assert!(!result.screen_reader); // unchanged
+    }
 }

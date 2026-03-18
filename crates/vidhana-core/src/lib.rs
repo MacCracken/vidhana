@@ -705,4 +705,97 @@ mod tests {
         assert!(json.contains("network"));
         assert!(json.contains("privacy"));
     }
+
+    #[test]
+    fn test_network_validation_trims() {
+        let mut net = NetworkSettings {
+            hostname: "  myhost  ".to_string(),
+            dns_servers: vec!["1.1.1.1".to_string(), "".to_string(), "  ".to_string()],
+            ..NetworkSettings::default()
+        };
+        net.validate();
+        assert_eq!(net.hostname, "myhost");
+        assert_eq!(net.dns_servers.len(), 1);
+        assert_eq!(net.dns_servers[0], "1.1.1.1");
+    }
+
+    #[test]
+    fn test_locale_validation_trims() {
+        let mut locale = LocaleSettings {
+            language: "  en  ".to_string(),
+            region: "  US  ".to_string(),
+            timezone: "  UTC  ".to_string(),
+            keyboard_layout: "  us  ".to_string(),
+            ..LocaleSettings::default()
+        };
+        locale.validate();
+        assert_eq!(locale.language, "en");
+        assert_eq!(locale.region, "US");
+        assert_eq!(locale.timezone, "UTC");
+        assert_eq!(locale.keyboard_layout, "us");
+    }
+
+    #[test]
+    fn test_accessibility_validation() {
+        let mut a11y = AccessibilitySettings::default();
+        a11y.validate(); // should not panic
+        assert_eq!(a11y.cursor_size, CursorSize::Default);
+    }
+
+    #[test]
+    fn test_state_validate_all_seven() {
+        let mut state = VidhanaState {
+            config: VidhanaConfig::default(),
+            display: DisplaySettings {
+                brightness: 200,
+                ..DisplaySettings::default()
+            },
+            audio: AudioSettings {
+                master_volume: 200,
+                ..AudioSettings::default()
+            },
+            network: NetworkSettings {
+                hostname: "  host  ".to_string(),
+                ..NetworkSettings::default()
+            },
+            privacy: PrivacySettings {
+                screen_lock_timeout_secs: 1,
+                ..PrivacySettings::default()
+            },
+            locale: LocaleSettings {
+                language: "  en  ".to_string(),
+                ..LocaleSettings::default()
+            },
+            power: PowerSettings {
+                suspend_timeout_minutes: 999,
+                ..PowerSettings::default()
+            },
+            accessibility: AccessibilitySettings::default(),
+        };
+        state.validate();
+        assert_eq!(state.display.brightness, 100);
+        assert_eq!(state.audio.master_volume, 100);
+        assert_eq!(state.network.hostname, "host");
+        assert_eq!(state.privacy.screen_lock_timeout_secs, 30);
+        assert_eq!(state.locale.language, "en");
+        assert_eq!(state.power.suspend_timeout_minutes, 120);
+    }
+
+    #[test]
+    fn test_weekday_all_variants() {
+        let days = [
+            Weekday::Sunday,
+            Weekday::Monday,
+            Weekday::Tuesday,
+            Weekday::Wednesday,
+            Weekday::Thursday,
+            Weekday::Friday,
+            Weekday::Saturday,
+        ];
+        for day in days {
+            let json = serde_json::to_string(&day).unwrap();
+            let parsed: Weekday = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, day);
+        }
+    }
 }

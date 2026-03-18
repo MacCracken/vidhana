@@ -560,4 +560,172 @@ mod tests {
             assert!(tool.input_schema.get("properties").is_some());
         }
     }
+
+    #[test]
+    fn test_audio_get() {
+        let svc = test_service();
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_audio".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            &svc,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("master_volume"));
+    }
+
+    #[test]
+    fn test_network_get() {
+        let svc = test_service();
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_network".to_string(),
+                arguments: serde_json::json!({"action": "get"}),
+            },
+            &svc,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("wifi_enabled"));
+    }
+
+    #[test]
+    fn test_privacy_get() {
+        let svc = test_service();
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_privacy".to_string(),
+                arguments: serde_json::json!({"action": "get"}),
+            },
+            &svc,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("screen_lock_enabled"));
+    }
+
+    #[test]
+    fn test_privacy_set() {
+        let svc = test_service();
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_privacy".to_string(),
+                arguments: serde_json::json!({"action": "set", "telemetry_enabled": true, "camera_enabled": false}),
+            },
+            &svc,
+        );
+        let g = svc.state.read().unwrap();
+        assert!(g.privacy.telemetry_enabled);
+        assert!(!g.privacy.camera_enabled);
+    }
+
+    #[test]
+    fn test_system_get_all_categories() {
+        let svc = test_service();
+        for cat in ["power", "locale", "accessibility"] {
+            let result = handle_tool_call(
+                &McpToolCall {
+                    name: "vidhana_system".to_string(),
+                    arguments: serde_json::json!({"action": "get", "category": cat}),
+                },
+                &svc,
+            );
+            assert!(!result.is_error, "Failed for category: {cat}");
+        }
+    }
+
+    #[test]
+    fn test_system_invalid_category() {
+        let svc = test_service();
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_system".to_string(),
+                arguments: serde_json::json!({"action": "get", "category": "nonsense"}),
+            },
+            &svc,
+        );
+        assert!(result.is_error);
+    }
+
+    #[test]
+    fn test_default_action_is_get() {
+        let svc = test_service();
+        // No action field — should default to "get"
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_display".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            &svc,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("brightness"));
+    }
+
+    #[test]
+    fn test_display_set_theme() {
+        let svc = test_service();
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_display".to_string(),
+                arguments: serde_json::json!({"action": "set", "theme": "light"}),
+            },
+            &svc,
+        );
+        assert_eq!(svc.state.read().unwrap().display.theme, Theme::Light);
+    }
+
+    #[test]
+    fn test_audio_mute() {
+        let svc = test_service();
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_audio".to_string(),
+                arguments: serde_json::json!({"action": "set", "muted": true}),
+            },
+            &svc,
+        );
+        assert!(svc.state.read().unwrap().audio.muted);
+    }
+
+    #[test]
+    fn test_network_set_bluetooth() {
+        let svc = test_service();
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_network".to_string(),
+                arguments: serde_json::json!({"action": "set", "bluetooth_enabled": false}),
+            },
+            &svc,
+        );
+        assert!(!svc.state.read().unwrap().network.bluetooth_enabled);
+    }
+
+    #[test]
+    fn test_history_with_category_filter() {
+        let svc = test_service();
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_display".to_string(),
+                arguments: serde_json::json!({"action": "set", "brightness": 50}),
+            },
+            &svc,
+        );
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_audio".to_string(),
+                arguments: serde_json::json!({"action": "set", "volume": 30}),
+            },
+            &svc,
+        );
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_history".to_string(),
+                arguments: serde_json::json!({"category": "audio"}),
+            },
+            &svc,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("audio"));
+        assert!(!result.content[0].text.contains("display"));
+    }
 }
