@@ -166,9 +166,10 @@ impl SettingsService {
 
     pub fn update_network(
         &self,
-        settings: NetworkSettings,
+        mut settings: NetworkSettings,
         source: ChangeSource,
     ) -> Result<(), ServiceError> {
+        settings.validate();
         let old = self.read_json(|s| &s.network);
 
         if let Err(e) = self.backend.apply_network(&settings) {
@@ -188,7 +189,8 @@ impl SettingsService {
     ) -> Result<NetworkSettings, ServiceError> {
         let old = self.read_json(|s| &s.network);
         let current_val = self.read_value(|s| &s.network)?;
-        let updated: NetworkSettings = self.merge_and_parse(current_val, &patch)?;
+        let mut updated: NetworkSettings = self.merge_and_parse(current_val, &patch)?;
+        updated.validate();
 
         if let Err(e) = self.backend.apply_network(&updated) {
             tracing::warn!("Backend apply_network: {e}");
@@ -244,9 +246,10 @@ impl SettingsService {
 
     pub fn update_locale(
         &self,
-        settings: LocaleSettings,
+        mut settings: LocaleSettings,
         source: ChangeSource,
     ) -> Result<(), ServiceError> {
+        settings.validate();
         let old = self.read_json(|s| &s.locale);
 
         if let Err(e) = self.backend.apply_locale(&settings) {
@@ -266,7 +269,8 @@ impl SettingsService {
     ) -> Result<LocaleSettings, ServiceError> {
         let old = self.read_json(|s| &s.locale);
         let current_val = self.read_value(|s| &s.locale)?;
-        let updated: LocaleSettings = self.merge_and_parse(current_val, &patch)?;
+        let mut updated: LocaleSettings = self.merge_and_parse(current_val, &patch)?;
+        updated.validate();
 
         if let Err(e) = self.backend.apply_locale(&updated) {
             tracing::warn!("Backend apply_locale: {e}");
@@ -322,9 +326,10 @@ impl SettingsService {
 
     pub fn update_accessibility(
         &self,
-        settings: AccessibilitySettings,
+        mut settings: AccessibilitySettings,
         source: ChangeSource,
     ) -> Result<(), ServiceError> {
+        settings.validate();
         let old = self.read_json(|s| &s.accessibility);
 
         if let Err(e) = self.backend.apply_accessibility(&settings) {
@@ -344,7 +349,8 @@ impl SettingsService {
     ) -> Result<AccessibilitySettings, ServiceError> {
         let old = self.read_json(|s| &s.accessibility);
         let current_val = self.read_value(|s| &s.accessibility)?;
-        let updated: AccessibilitySettings = self.merge_and_parse(current_val, &patch)?;
+        let mut updated: AccessibilitySettings = self.merge_and_parse(current_val, &patch)?;
+        updated.validate();
 
         if let Err(e) = self.backend.apply_accessibility(&updated) {
             tracing::warn!("Backend apply_accessibility: {e}");

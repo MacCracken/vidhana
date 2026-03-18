@@ -28,9 +28,6 @@ pub struct AppState {
 /// API error type with JSON response support.
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
-    #[error("HTTP request failed: {0}")]
-    Http(#[from] reqwest::Error),
-
     #[error("{0}")]
     BadRequest(String),
 
@@ -49,7 +46,6 @@ struct ErrorResponse {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let (status, msg) = match &self {
-            ApiError::Http(e) => (StatusCode::BAD_GATEWAY, e.to_string()),
             ApiError::BadRequest(e) => (StatusCode::BAD_REQUEST, e.clone()),
             ApiError::NotFound(e) => (StatusCode::NOT_FOUND, e.clone()),
             ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
@@ -362,47 +358,6 @@ async fn parse_natural_language(
 }
 
 // ---------------------------------------------------------------------------
-// Daimon client
-// ---------------------------------------------------------------------------
-
-/// Daimon API client for service status queries
-pub struct DaimonClient {
-    base_url: String,
-    client: reqwest::Client,
-}
-
-impl DaimonClient {
-    pub fn new(base_url: &str) -> Self {
-        Self {
-            base_url: base_url.to_string(),
-            client: reqwest::Client::new(),
-        }
-    }
-
-    pub async fn health(&self) -> Result<bool, ApiError> {
-        let resp = self
-            .client
-            .get(format!("{}/v1/health", self.base_url))
-            .timeout(std::time::Duration::from_secs(3))
-            .send()
-            .await?;
-        Ok(resp.status().is_success())
-    }
-
-    pub async fn metrics(&self) -> Result<serde_json::Value, ApiError> {
-        let resp = self
-            .client
-            .get(format!("{}/v1/metrics", self.base_url))
-            .timeout(std::time::Duration::from_secs(5))
-            .send()
-            .await?
-            .json()
-            .await?;
-        Ok(resp)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -623,11 +578,5 @@ mod tests {
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(parsed["intent"].is_null());
-    }
-
-    #[test]
-    fn test_daimon_client_creation() {
-        let client = DaimonClient::new("http://127.0.0.1:8090");
-        assert_eq!(client.base_url, "http://127.0.0.1:8090");
     }
 }

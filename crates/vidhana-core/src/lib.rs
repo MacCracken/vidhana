@@ -40,8 +40,11 @@ impl VidhanaState {
     pub fn validate(&mut self) {
         self.display.validate();
         self.audio.validate();
+        self.network.validate();
         self.privacy.validate();
+        self.locale.validate();
         self.power.validate();
+        self.accessibility.validate();
     }
 }
 
@@ -201,6 +204,14 @@ impl Default for NetworkSettings {
     }
 }
 
+impl NetworkSettings {
+    /// Validate network settings. Trims hostname whitespace.
+    pub fn validate(&mut self) {
+        self.hostname = self.hostname.trim().to_string();
+        self.dns_servers.retain(|s| !s.trim().is_empty());
+    }
+}
+
 /// Proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -266,12 +277,26 @@ impl Default for LocaleSettings {
     }
 }
 
+impl LocaleSettings {
+    /// Validate locale settings. Trims string fields.
+    pub fn validate(&mut self) {
+        self.language = self.language.trim().to_string();
+        self.region = self.region.trim().to_string();
+        self.timezone = self.timezone.trim().to_string();
+        self.keyboard_layout = self.keyboard_layout.trim().to_string();
+    }
+}
+
 /// Day of week
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Weekday {
     Sunday,
     Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
     Saturday,
 }
 
@@ -342,6 +367,11 @@ impl Default for AccessibilitySettings {
             cursor_size: CursorSize::Default,
         }
     }
+}
+
+impl AccessibilitySettings {
+    /// Validate accessibility settings. Currently a no-op (all fields are booleans/enums).
+    pub fn validate(&mut self) {}
 }
 
 /// Cursor size option

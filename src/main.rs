@@ -14,7 +14,7 @@ struct Cli {
     #[arg(long)]
     gui: bool,
 
-    /// Run in headless mode (API only)
+    /// Run in headless mode (API only, same as default)
     #[arg(long)]
     headless: bool,
 

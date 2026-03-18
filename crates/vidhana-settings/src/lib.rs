@@ -4,12 +4,13 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use vidhana_core::VidhanaState;
 
 /// Settings storage backend
 pub struct SettingsStore {
     config_dir: PathBuf,
-    db_path: PathBuf,
+    conn: Mutex<rusqlite::Connection>,
 }
 
 /// A recorded settings change for audit trail
@@ -51,26 +52,21 @@ pub enum StorageError {
 
     #[error("Settings not found: {0}")]
     NotFound(String),
+
+    #[error("Lock poisoned")]
+    LockPoisoned,
 }
 
 impl SettingsStore {
-    /// Create a new settings store at the given data directory
+    /// Create a new settings store at the given data directory.
+    /// Opens a single SQLite connection that is reused for all operations.
     pub fn new(data_dir: &str) -> Result<Self, StorageError> {
         let config_dir = PathBuf::from(data_dir);
         let db_path = config_dir.join("history.db");
 
         std::fs::create_dir_all(&config_dir)?;
 
-        let store = Self {
-            config_dir,
-            db_path,
-        };
-        store.init_db()?;
-        Ok(store)
-    }
-
-    fn init_db(&self) -> Result<(), StorageError> {
-        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let conn = rusqlite::Connection::open(&db_path)?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS settings_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,15 +80,18 @@ impl SettingsStore {
             CREATE INDEX IF NOT EXISTS idx_history_category ON settings_history(category);
             CREATE INDEX IF NOT EXISTS idx_history_timestamp ON settings_history(timestamp);",
         )?;
-        Ok(())
+
+        Ok(Self {
+            config_dir,
+            conn: Mutex::new(conn),
+        })
     }
 
-    /// Save current state to TOML files
+    /// Save current state to TOML file
     pub fn save_state(&self, state: &VidhanaState) -> Result<(), StorageError> {
         let settings_path = self.config_dir.join("settings.toml");
         let content = toml::to_string_pretty(state)?;
         std::fs::write(&settings_path, content)?;
-        tracing::info!(path = %settings_path.display(), "Settings saved");
         Ok(())
     }
 
@@ -109,7 +108,7 @@ impl SettingsStore {
 
     /// Record a settings change in the audit history
     pub fn record_change(&self, change: &SettingsChange) -> Result<(), StorageError> {
-        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let conn = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
         conn.execute(
             "INSERT INTO settings_history (timestamp, category, key, old_value, new_value, source)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -127,30 +126,15 @@ impl SettingsStore {
 
     /// Get recent change history
     pub fn recent_changes(&self, limit: usize) -> Result<Vec<SettingsChange>, StorageError> {
-        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let conn = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
         let mut stmt = conn.prepare(
             "SELECT timestamp, category, key, old_value, new_value, source
              FROM settings_history ORDER BY timestamp DESC LIMIT ?1",
         )?;
-
         let changes = stmt
-            .query_map([limit], |row| {
-                let ts_str: String = row.get(0)?;
-                let source_str: String = row.get(5)?;
-                Ok(SettingsChange {
-                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now()),
-                    category: row.get(1)?,
-                    key: row.get(2)?,
-                    old_value: row.get(3)?,
-                    new_value: row.get(4)?,
-                    source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
-                })
-            })?
+            .query_map([limit], parse_change_row)?
             .filter_map(|r| r.ok())
             .collect();
-
         Ok(changes)
     }
 
@@ -160,30 +144,15 @@ impl SettingsStore {
         category: &str,
         limit: usize,
     ) -> Result<Vec<SettingsChange>, StorageError> {
-        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let conn = self.conn.lock().map_err(|_| StorageError::LockPoisoned)?;
         let mut stmt = conn.prepare(
             "SELECT timestamp, category, key, old_value, new_value, source
              FROM settings_history WHERE category = ?1 ORDER BY timestamp DESC LIMIT ?2",
         )?;
-
         let changes = stmt
-            .query_map(rusqlite::params![category, limit], |row| {
-                let ts_str: String = row.get(0)?;
-                let source_str: String = row.get(5)?;
-                Ok(SettingsChange {
-                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now()),
-                    category: row.get(1)?,
-                    key: row.get(2)?,
-                    old_value: row.get(3)?,
-                    new_value: row.get(4)?,
-                    source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
-                })
-            })?
+            .query_map(rusqlite::params![category, limit], parse_change_row)?
             .filter_map(|r| r.ok())
             .collect();
-
         Ok(changes)
     }
 
@@ -191,6 +160,22 @@ impl SettingsStore {
     pub fn config_dir(&self) -> &Path {
         &self.config_dir
     }
+}
+
+/// Parse a SQLite row into a SettingsChange.
+fn parse_change_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SettingsChange> {
+    let ts_str: String = row.get(0)?;
+    let source_str: String = row.get(5)?;
+    Ok(SettingsChange {
+        timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now()),
+        category: row.get(1)?,
+        key: row.get(2)?,
+        old_value: row.get(3)?,
+        new_value: row.get(4)?,
+        source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
+    })
 }
 
 #[cfg(test)]
@@ -259,6 +244,7 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].key, "brightness");
         assert_eq!(history[0].new_value, "100");
+        assert_eq!(history[0].source, ChangeSource::Gui);
         std::fs::remove_dir_all(store.config_dir()).ok();
     }
 

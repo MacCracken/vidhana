@@ -3316,7 +3316,6 @@ version = "2026.3.18"
 dependencies = [
  "axum",
  "chrono",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3347,11 +3346,9 @@ dependencies = [
 name = "vidhana-core"
 version = "2026.3.18"
 dependencies = [
- "chrono",
  "serde",
  "serde_json",
  "toml",
- "tracing",
 ]
 
 [[package]]
