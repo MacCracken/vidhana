@@ -3,6 +3,7 @@
 //! Sanskrit: विधान (regulation, constitution, arrangement)
 
 use clap::Parser;
+use std::sync::Arc;
 use vidhana_core::*;
 
 #[derive(Parser)]
@@ -52,32 +53,35 @@ fn main() {
         config.data_dir = dir.clone();
     }
 
+    let store = vidhana_settings::SettingsStore::new(&config.data_dir)
+        .expect("Failed to initialize settings store");
+    let store = Arc::new(store);
+
     let state = new_shared_state(config.clone());
 
     // Load persisted settings if available
-    if let Ok(store) = vidhana_settings::SettingsStore::new(&config.data_dir) {
-        if let Ok(Some(saved)) = store.load_state() {
-            let mut guard = state.write().unwrap();
-            guard.display = saved.display;
-            guard.audio = saved.audio;
-            guard.network = saved.network;
-            guard.privacy = saved.privacy;
-            guard.locale = saved.locale;
-            guard.power = saved.power;
-            guard.accessibility = saved.accessibility;
-            tracing::info!("Loaded persisted settings from {}", config.data_dir);
-        }
+    if let Ok(Some(saved)) = store.load_state() {
+        let mut guard = state.write().unwrap();
+        guard.display = saved.display;
+        guard.audio = saved.audio;
+        guard.network = saved.network;
+        guard.privacy = saved.privacy;
+        guard.locale = saved.locale;
+        guard.power = saved.power;
+        guard.accessibility = saved.accessibility;
+        guard.validate();
+        tracing::info!("Loaded persisted settings from {}", config.data_dir);
     }
 
     if cli.mcp {
         tracing::info!("Starting MCP server on stdin/stdout");
-        run_mcp_server(state);
+        run_mcp_server(state, store);
         return;
     }
 
     if cli.gui {
         tracing::info!("Launching GUI");
-        vidhana_ui::run_app(state);
+        vidhana_ui::run_app(state, store);
         return;
     }
 
@@ -87,8 +91,13 @@ fn main() {
         let addr = format!("{}:{}", cli.bind, cli.port);
         tracing::info!("Starting HTTP API on {addr}");
 
-        let app = vidhana_api::router(state)
-            .layer(tower_http::cors::CorsLayer::permissive());
+        let app_state = vidhana_api::AppState {
+            settings: state,
+            store,
+        };
+
+        let app =
+            vidhana_api::router(app_state).layer(tower_http::cors::CorsLayer::permissive());
 
         let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
         axum::serve(listener, app)
@@ -98,7 +107,7 @@ fn main() {
     });
 }
 
-fn run_mcp_server(state: SharedState) {
+fn run_mcp_server(state: SharedState, store: Arc<vidhana_settings::SettingsStore>) {
     use std::io::{self, BufRead, Write};
 
     let stdin = io::stdin();
@@ -122,10 +131,14 @@ fn run_mcp_server(state: SharedState) {
             Some("tools/call") => {
                 let params = request.get("params").cloned().unwrap_or_default();
                 let call = vidhana_mcp::McpToolCall {
-                    name: params.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
+                    name: params
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     arguments: params.get("arguments").cloned().unwrap_or_default(),
                 };
-                let result = vidhana_mcp::handle_tool_call(&call, &state);
+                let result = vidhana_mcp::handle_tool_call(&call, &state, &store);
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": request.get("id"),

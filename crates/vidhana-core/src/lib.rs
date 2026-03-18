@@ -35,6 +35,16 @@ pub struct VidhanaState {
     pub accessibility: AccessibilitySettings,
 }
 
+impl VidhanaState {
+    /// Validate and clamp all settings to their valid ranges.
+    pub fn validate(&mut self) {
+        self.display.validate();
+        self.audio.validate();
+        self.privacy.validate();
+        self.power.validate();
+    }
+}
+
 /// Application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VidhanaConfig {
@@ -77,9 +87,8 @@ fn dirs() -> String {
         })
 }
 
-fn toml_from_str(s: &str) -> Result<VidhanaConfig, serde_json::Error> {
-    // Placeholder — vidhana-settings handles real TOML parsing
-    serde_json::from_str(s)
+fn toml_from_str(s: &str) -> Result<VidhanaConfig, toml::de::Error> {
+    toml::from_str(s)
 }
 
 /// Display and appearance settings
@@ -105,6 +114,16 @@ impl Default for DisplaySettings {
             night_light_temperature: 4500,
             refresh_rate: 60,
         }
+    }
+}
+
+impl DisplaySettings {
+    /// Clamp all numeric fields to valid ranges.
+    pub fn validate(&mut self) {
+        self.brightness = self.brightness.min(100);
+        self.scaling_factor = self.scaling_factor.clamp(0.5, 3.0);
+        self.night_light_temperature = self.night_light_temperature.clamp(1000, 10000);
+        self.refresh_rate = self.refresh_rate.clamp(30, 360);
     }
 }
 
@@ -146,6 +165,14 @@ impl Default for AudioSettings {
             input_device: "default".to_string(),
             input_volume: 80,
         }
+    }
+}
+
+impl AudioSettings {
+    /// Clamp all numeric fields to valid ranges.
+    pub fn validate(&mut self) {
+        self.master_volume = self.master_volume.min(100);
+        self.input_volume = self.input_volume.min(100);
     }
 }
 
@@ -209,6 +236,13 @@ impl Default for PrivacySettings {
     }
 }
 
+impl PrivacySettings {
+    /// Clamp all numeric fields to valid ranges.
+    pub fn validate(&mut self) {
+        self.screen_lock_timeout_secs = self.screen_lock_timeout_secs.clamp(30, 3600);
+    }
+}
+
 /// Locale and language settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocaleSettings {
@@ -259,6 +293,14 @@ impl Default for PowerSettings {
             display_off_timeout_minutes: 10,
             power_profile: PowerProfile::Balanced,
         }
+    }
+}
+
+impl PowerSettings {
+    /// Clamp all numeric fields to valid ranges.
+    pub fn validate(&mut self) {
+        self.suspend_timeout_minutes = self.suspend_timeout_minutes.clamp(5, 120);
+        self.display_off_timeout_minutes = self.display_off_timeout_minutes.clamp(1, 60);
     }
 }
 
@@ -324,6 +366,20 @@ pub enum SettingsCategory {
     Locale,
     Power,
     Accessibility,
+}
+
+impl std::fmt::Display for SettingsCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Display => write!(f, "display"),
+            Self::Audio => write!(f, "audio"),
+            Self::Network => write!(f, "network"),
+            Self::Privacy => write!(f, "privacy"),
+            Self::Locale => write!(f, "locale"),
+            Self::Power => write!(f, "power"),
+            Self::Accessibility => write!(f, "accessibility"),
+        }
+    }
 }
 
 impl std::str::FromStr for SettingsCategory {
@@ -475,6 +531,96 @@ mod tests {
         let parsed: ProxyConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.http, proxy.http);
         assert_eq!(parsed.no_proxy.len(), 2);
+    }
+
+    #[test]
+    fn test_settings_category_display() {
+        assert_eq!(SettingsCategory::Display.to_string(), "display");
+        assert_eq!(SettingsCategory::Audio.to_string(), "audio");
+        assert_eq!(SettingsCategory::Network.to_string(), "network");
+        assert_eq!(SettingsCategory::Privacy.to_string(), "privacy");
+        assert_eq!(SettingsCategory::Locale.to_string(), "locale");
+        assert_eq!(SettingsCategory::Power.to_string(), "power");
+        assert_eq!(SettingsCategory::Accessibility.to_string(), "accessibility");
+    }
+
+    #[test]
+    fn test_display_validation_clamps() {
+        let mut ds = DisplaySettings {
+            brightness: 200,
+            scaling_factor: 5.0,
+            night_light_temperature: 500,
+            refresh_rate: 0,
+            ..DisplaySettings::default()
+        };
+        ds.validate();
+        assert_eq!(ds.brightness, 100);
+        assert_eq!(ds.scaling_factor, 3.0);
+        assert_eq!(ds.night_light_temperature, 1000);
+        assert_eq!(ds.refresh_rate, 30);
+    }
+
+    #[test]
+    fn test_audio_validation_clamps() {
+        let mut audio = AudioSettings {
+            master_volume: 255,
+            input_volume: 200,
+            ..AudioSettings::default()
+        };
+        audio.validate();
+        assert_eq!(audio.master_volume, 100);
+        assert_eq!(audio.input_volume, 100);
+    }
+
+    #[test]
+    fn test_privacy_validation_clamps() {
+        let mut priv_s = PrivacySettings {
+            screen_lock_timeout_secs: 10,
+            ..PrivacySettings::default()
+        };
+        priv_s.validate();
+        assert_eq!(priv_s.screen_lock_timeout_secs, 30);
+    }
+
+    #[test]
+    fn test_power_validation_clamps() {
+        let mut power = PowerSettings {
+            suspend_timeout_minutes: 999,
+            display_off_timeout_minutes: 0,
+            ..PowerSettings::default()
+        };
+        power.validate();
+        assert_eq!(power.suspend_timeout_minutes, 120);
+        assert_eq!(power.display_off_timeout_minutes, 1);
+    }
+
+    #[test]
+    fn test_state_validate() {
+        let mut state = VidhanaState {
+            config: VidhanaConfig::default(),
+            display: DisplaySettings { brightness: 200, ..DisplaySettings::default() },
+            audio: AudioSettings { master_volume: 200, ..AudioSettings::default() },
+            network: NetworkSettings::default(),
+            privacy: PrivacySettings { screen_lock_timeout_secs: 1, ..PrivacySettings::default() },
+            locale: LocaleSettings::default(),
+            power: PowerSettings { suspend_timeout_minutes: 999, ..PowerSettings::default() },
+            accessibility: AccessibilitySettings::default(),
+        };
+        state.validate();
+        assert_eq!(state.display.brightness, 100);
+        assert_eq!(state.audio.master_volume, 100);
+        assert_eq!(state.privacy.screen_lock_timeout_secs, 30);
+        assert_eq!(state.power.suspend_timeout_minutes, 120);
+    }
+
+    #[test]
+    fn test_config_toml_roundtrip() {
+        let config = VidhanaConfig::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: VidhanaConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.port, config.port);
+        assert_eq!(parsed.daimon_url, config.daimon_url);
+        assert_eq!(parsed.data_dir, config.data_dir);
     }
 
     #[test]

@@ -8,7 +8,9 @@
 //! - vidhana_system: Get system info, power, locale, accessibility
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use vidhana_core::*;
+use vidhana_settings::{ChangeSource, SettingsChange, SettingsStore};
 
 /// MCP tool definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,22 +137,61 @@ pub fn list_tools() -> Vec<McpTool> {
 }
 
 /// Handle an MCP tool call
-pub fn handle_tool_call(call: &McpToolCall, state: &SharedState) -> McpToolResult {
+pub fn handle_tool_call(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
     match call.name.as_str() {
-        "vidhana_display" => handle_display(call, state),
-        "vidhana_audio" => handle_audio(call, state),
-        "vidhana_network" => handle_network(call, state),
-        "vidhana_privacy" => handle_privacy(call, state),
-        "vidhana_system" => handle_system(call, state),
+        "vidhana_display" => handle_display(call, state, store),
+        "vidhana_audio" => handle_audio(call, state, store),
+        "vidhana_network" => handle_network(call, state, store),
+        "vidhana_privacy" => handle_privacy(call, state, store),
+        "vidhana_system" => handle_system(call, state, store),
         _ => McpToolResult::error(format!("Unknown tool: {}", call.name)),
     }
 }
 
-fn handle_display(call: &McpToolCall, state: &SharedState) -> McpToolResult {
-    let action = call.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("get");
+fn persist_and_record(
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+    category: &str,
+    key: &str,
+    old_value: &str,
+    new_value: &str,
+) {
+    let guard = state.read().unwrap();
+    if let Err(e) = store.save_state(&guard) {
+        tracing::error!("MCP: failed to persist settings: {e}");
+    }
+    drop(guard);
+    let change = SettingsChange {
+        timestamp: chrono::Utc::now(),
+        category: category.to_string(),
+        key: key.to_string(),
+        old_value: old_value.to_string(),
+        new_value: new_value.to_string(),
+        source: ChangeSource::Mcp,
+    };
+    if let Err(e) = store.record_change(&change) {
+        tracing::error!("MCP: failed to record change: {e}");
+    }
+}
+
+fn handle_display(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
+    let action = call
+        .arguments
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
 
     if action == "set" {
         let mut guard = state.write().unwrap();
+        let old = serde_json::to_string(&guard.display).unwrap_or_default();
         if let Some(b) = call.arguments.get("brightness").and_then(|v| v.as_u64()) {
             guard.display.brightness = b as u8;
         }
@@ -164,6 +205,10 @@ fn handle_display(call: &McpToolCall, state: &SharedState) -> McpToolResult {
         if let Some(nl) = call.arguments.get("night_light").and_then(|v| v.as_bool()) {
             guard.display.night_light = nl;
         }
+        guard.display.validate();
+        let new = serde_json::to_string(&guard.display).unwrap_or_default();
+        drop(guard);
+        persist_and_record(state, store, "display", "*", &old, &new);
         McpToolResult::success("Display settings updated".to_string())
     } else {
         let guard = state.read().unwrap();
@@ -171,17 +216,30 @@ fn handle_display(call: &McpToolCall, state: &SharedState) -> McpToolResult {
     }
 }
 
-fn handle_audio(call: &McpToolCall, state: &SharedState) -> McpToolResult {
-    let action = call.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("get");
+fn handle_audio(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
+    let action = call
+        .arguments
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
 
     if action == "set" {
         let mut guard = state.write().unwrap();
+        let old = serde_json::to_string(&guard.audio).unwrap_or_default();
         if let Some(v) = call.arguments.get("volume").and_then(|v| v.as_u64()) {
             guard.audio.master_volume = v as u8;
         }
         if let Some(m) = call.arguments.get("muted").and_then(|v| v.as_bool()) {
             guard.audio.muted = m;
         }
+        guard.audio.validate();
+        let new = serde_json::to_string(&guard.audio).unwrap_or_default();
+        drop(guard);
+        persist_and_record(state, store, "audio", "*", &old, &new);
         McpToolResult::success("Audio settings updated".to_string())
     } else {
         let guard = state.read().unwrap();
@@ -189,20 +247,40 @@ fn handle_audio(call: &McpToolCall, state: &SharedState) -> McpToolResult {
     }
 }
 
-fn handle_network(call: &McpToolCall, state: &SharedState) -> McpToolResult {
-    let action = call.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("get");
+fn handle_network(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
+    let action = call
+        .arguments
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
 
     if action == "set" {
         let mut guard = state.write().unwrap();
+        let old = serde_json::to_string(&guard.network).unwrap_or_default();
         if let Some(w) = call.arguments.get("wifi_enabled").and_then(|v| v.as_bool()) {
             guard.network.wifi_enabled = w;
         }
-        if let Some(b) = call.arguments.get("bluetooth_enabled").and_then(|v| v.as_bool()) {
+        if let Some(b) = call
+            .arguments
+            .get("bluetooth_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.network.bluetooth_enabled = b;
         }
-        if let Some(f) = call.arguments.get("firewall_enabled").and_then(|v| v.as_bool()) {
+        if let Some(f) = call
+            .arguments
+            .get("firewall_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.network.firewall_enabled = f;
         }
+        let new = serde_json::to_string(&guard.network).unwrap_or_default();
+        drop(guard);
+        persist_and_record(state, store, "network", "*", &old, &new);
         McpToolResult::success("Network settings updated".to_string())
     } else {
         let guard = state.read().unwrap();
@@ -210,23 +288,52 @@ fn handle_network(call: &McpToolCall, state: &SharedState) -> McpToolResult {
     }
 }
 
-fn handle_privacy(call: &McpToolCall, state: &SharedState) -> McpToolResult {
-    let action = call.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("get");
+fn handle_privacy(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
+    let action = call
+        .arguments
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
 
     if action == "set" {
         let mut guard = state.write().unwrap();
-        if let Some(sl) = call.arguments.get("screen_lock_enabled").and_then(|v| v.as_bool()) {
+        let old = serde_json::to_string(&guard.privacy).unwrap_or_default();
+        if let Some(sl) = call
+            .arguments
+            .get("screen_lock_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.privacy.screen_lock_enabled = sl;
         }
-        if let Some(t) = call.arguments.get("telemetry_enabled").and_then(|v| v.as_bool()) {
+        if let Some(t) = call
+            .arguments
+            .get("telemetry_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.privacy.telemetry_enabled = t;
         }
-        if let Some(c) = call.arguments.get("camera_enabled").and_then(|v| v.as_bool()) {
+        if let Some(c) = call
+            .arguments
+            .get("camera_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.privacy.camera_enabled = c;
         }
-        if let Some(m) = call.arguments.get("microphone_enabled").and_then(|v| v.as_bool()) {
+        if let Some(m) = call
+            .arguments
+            .get("microphone_enabled")
+            .and_then(|v| v.as_bool())
+        {
             guard.privacy.microphone_enabled = m;
         }
+        guard.privacy.validate();
+        let new = serde_json::to_string(&guard.privacy).unwrap_or_default();
+        drop(guard);
+        persist_and_record(state, store, "privacy", "*", &old, &new);
         McpToolResult::success("Privacy settings updated".to_string())
     } else {
         let guard = state.read().unwrap();
@@ -234,32 +341,61 @@ fn handle_privacy(call: &McpToolCall, state: &SharedState) -> McpToolResult {
     }
 }
 
-fn handle_system(call: &McpToolCall, state: &SharedState) -> McpToolResult {
-    let action = call.arguments.get("action").and_then(|v| v.as_str()).unwrap_or("get");
-    let category = call.arguments.get("category").and_then(|v| v.as_str()).unwrap_or("power");
+fn handle_system(
+    call: &McpToolCall,
+    state: &SharedState,
+    store: &Arc<SettingsStore>,
+) -> McpToolResult {
+    let action = call
+        .arguments
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("get");
+    let category = call
+        .arguments
+        .get("category")
+        .and_then(|v| v.as_str())
+        .unwrap_or("power");
 
     if action == "set" {
         let mut guard = state.write().unwrap();
         match category {
             "power" => {
-                if let Some(pp) = call.arguments.get("power_profile").and_then(|v| v.as_str()) {
+                let old = serde_json::to_string(&guard.power).unwrap_or_default();
+                if let Some(pp) = call
+                    .arguments
+                    .get("power_profile")
+                    .and_then(|v| v.as_str())
+                {
                     guard.power.power_profile = match pp {
                         "performance" => PowerProfile::Performance,
                         "power-saver" => PowerProfile::PowerSaver,
                         _ => PowerProfile::Balanced,
                     };
                 }
+                guard.power.validate();
+                let new = serde_json::to_string(&guard.power).unwrap_or_default();
+                drop(guard);
+                persist_and_record(state, store, "power", "*", &old, &new);
             }
             "locale" => {
+                let old = serde_json::to_string(&guard.locale).unwrap_or_default();
                 if let Some(tz) = call.arguments.get("timezone").and_then(|v| v.as_str()) {
                     guard.locale.timezone = tz.to_string();
                 }
                 if let Some(lang) = call.arguments.get("language").and_then(|v| v.as_str()) {
                     guard.locale.language = lang.to_string();
                 }
+                let new = serde_json::to_string(&guard.locale).unwrap_or_default();
+                drop(guard);
+                persist_and_record(state, store, "locale", "*", &old, &new);
             }
             "accessibility" => {
-                // Handled via individual fields in the arguments
+                let old = serde_json::to_string(&guard.accessibility).unwrap_or_default();
+                // Accessibility fields are booleans — no extra validation needed
+                let new = serde_json::to_string(&guard.accessibility).unwrap_or_default();
+                drop(guard);
+                persist_and_record(state, store, "accessibility", "*", &old, &new);
             }
             _ => return McpToolResult::error(format!("Unknown system category: {category}")),
         }
@@ -279,6 +415,19 @@ fn handle_system(call: &McpToolCall, state: &SharedState) -> McpToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn test_store() -> Arc<SettingsStore> {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "vidhana-mcp-test-{}-{}",
+            std::process::id(),
+            id
+        ));
+        Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap())
+    }
 
     fn test_state() -> SharedState {
         new_shared_state(VidhanaConfig::default())
@@ -298,11 +447,12 @@ mod tests {
     #[test]
     fn test_display_get() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_display".to_string(),
             arguments: serde_json::json!({"action": "get"}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
         assert!(result.content[0].text.contains("brightness"));
     }
@@ -310,34 +460,40 @@ mod tests {
     #[test]
     fn test_display_set_brightness() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_display".to_string(),
             arguments: serde_json::json!({"action": "set", "brightness": 100}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
         assert_eq!(state.read().unwrap().display.brightness, 100);
+        // Verify persisted
+        let loaded = store.load_state().unwrap().unwrap();
+        assert_eq!(loaded.display.brightness, 100);
     }
 
     #[test]
     fn test_display_set_theme() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_display".to_string(),
             arguments: serde_json::json!({"action": "set", "theme": "light"}),
         };
-        handle_tool_call(&call, &state);
+        handle_tool_call(&call, &state, &store);
         assert_eq!(state.read().unwrap().display.theme, Theme::Light);
     }
 
     #[test]
     fn test_audio_get() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_audio".to_string(),
             arguments: serde_json::json!({}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
         assert!(result.content[0].text.contains("master_volume"));
     }
@@ -345,33 +501,36 @@ mod tests {
     #[test]
     fn test_audio_set_volume() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_audio".to_string(),
             arguments: serde_json::json!({"action": "set", "volume": 50}),
         };
-        handle_tool_call(&call, &state);
+        handle_tool_call(&call, &state, &store);
         assert_eq!(state.read().unwrap().audio.master_volume, 50);
     }
 
     #[test]
     fn test_audio_mute() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_audio".to_string(),
             arguments: serde_json::json!({"action": "set", "muted": true}),
         };
-        handle_tool_call(&call, &state);
+        handle_tool_call(&call, &state, &store);
         assert!(state.read().unwrap().audio.muted);
     }
 
     #[test]
     fn test_network_get() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_network".to_string(),
             arguments: serde_json::json!({"action": "get"}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
         assert!(result.content[0].text.contains("wifi_enabled"));
     }
@@ -379,66 +538,78 @@ mod tests {
     #[test]
     fn test_network_disable_wifi() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_network".to_string(),
             arguments: serde_json::json!({"action": "set", "wifi_enabled": false}),
         };
-        handle_tool_call(&call, &state);
+        handle_tool_call(&call, &state, &store);
         assert!(!state.read().unwrap().network.wifi_enabled);
     }
 
     #[test]
     fn test_privacy_get() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_privacy".to_string(),
             arguments: serde_json::json!({}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
     }
 
     #[test]
     fn test_privacy_disable_telemetry() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_privacy".to_string(),
             arguments: serde_json::json!({"action": "set", "telemetry_enabled": true}),
         };
-        handle_tool_call(&call, &state);
+        handle_tool_call(&call, &state, &store);
         assert!(state.read().unwrap().privacy.telemetry_enabled);
     }
 
     #[test]
     fn test_system_power_profile() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_system".to_string(),
             arguments: serde_json::json!({"action": "set", "category": "power", "power_profile": "performance"}),
         };
-        handle_tool_call(&call, &state);
-        assert_eq!(state.read().unwrap().power.power_profile, PowerProfile::Performance);
+        handle_tool_call(&call, &state, &store);
+        assert_eq!(
+            state.read().unwrap().power.power_profile,
+            PowerProfile::Performance
+        );
     }
 
     #[test]
     fn test_system_locale_timezone() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_system".to_string(),
             arguments: serde_json::json!({"action": "set", "category": "locale", "timezone": "America/New_York"}),
         };
-        handle_tool_call(&call, &state);
-        assert_eq!(state.read().unwrap().locale.timezone, "America/New_York");
+        handle_tool_call(&call, &state, &store);
+        assert_eq!(
+            state.read().unwrap().locale.timezone,
+            "America/New_York"
+        );
     }
 
     #[test]
     fn test_system_get_power() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_system".to_string(),
             arguments: serde_json::json!({"action": "get", "category": "power"}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(!result.is_error);
         assert!(result.content[0].text.contains("power_profile"));
     }
@@ -446,11 +617,12 @@ mod tests {
     #[test]
     fn test_unknown_tool() {
         let state = test_state();
+        let store = test_store();
         let call = McpToolCall {
             name: "vidhana_unknown".to_string(),
             arguments: serde_json::json!({}),
         };
-        let result = handle_tool_call(&call, &state);
+        let result = handle_tool_call(&call, &state, &store);
         assert!(result.is_error);
     }
 
@@ -460,5 +632,20 @@ mod tests {
             assert!(tool.input_schema.is_object());
             assert!(tool.input_schema.get("properties").is_some());
         }
+    }
+
+    #[test]
+    fn test_mcp_set_records_history() {
+        let state = test_state();
+        let store = test_store();
+        let call = McpToolCall {
+            name: "vidhana_display".to_string(),
+            arguments: serde_json::json!({"action": "set", "brightness": 42}),
+        };
+        handle_tool_call(&call, &state, &store);
+        let changes = store.recent_changes(10).unwrap();
+        assert!(!changes.is_empty());
+        assert_eq!(changes[0].category, "display");
+        assert_eq!(changes[0].source, ChangeSource::Mcp);
     }
 }

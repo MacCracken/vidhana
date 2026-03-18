@@ -3321,6 +3321,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "vidhana-core",
+ "vidhana-settings",
 ]
 
 [[package]]
@@ -3330,6 +3331,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "toml",
  "tracing",
 ]
 
@@ -3337,12 +3339,14 @@ dependencies = [
 name = "vidhana-mcp"
 version = "2026.3.18"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "vidhana-core",
+ "vidhana-settings",
 ]
 
 [[package]]
@@ -3363,10 +3367,12 @@ dependencies = [
 name = "vidhana-ui"
 version = "2026.3.18"
 dependencies = [
+ "chrono",
  "eframe",
  "egui",
  "tracing",
  "vidhana-core",
+ "vidhana-settings",
 ]
 
 [[package]]

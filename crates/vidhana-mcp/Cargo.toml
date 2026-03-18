@@ -7,8 +7,10 @@ license = "GPL-3.0"
 
 [dependencies]
 vidhana-core = { path = "../vidhana-core" }
+vidhana-settings = { path = "../vidhana-settings" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }

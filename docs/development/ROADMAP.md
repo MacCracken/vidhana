@@ -4,18 +4,18 @@
 
 ## Current State
 
-Vidhana has a complete scaffold with 6 crates:
+Vidhana has 6 crates with MVP persistence fully wired:
 
 | Crate | Status | Notes |
 |-------|--------|-------|
-| `vidhana-core` | Scaffold | Types, shared state, config loading (TOML parsing is a placeholder) |
-| `vidhana-api` | Scaffold | REST CRUD for all 7 categories, health endpoint, DaimonClient stub |
-| `vidhana-ui` | Scaffold | egui GUI with all 7 panels + About, side nav |
+| `vidhana-core` | MVP | Types, shared state, TOML config, validation (clamp ranges) |
+| `vidhana-api` | MVP | REST CRUD + PATCH for all 7 categories, history endpoints, JSON errors |
+| `vidhana-ui` | MVP | egui GUI with all 7 panels + History + About, auto-save on change |
 | `vidhana-ai` | Scaffold | Keyword-based NL parsing, no LLM/hoosh integration |
-| `vidhana-settings` | Scaffold | TOML persistence + SQLite audit trail |
-| `vidhana-mcp` | Scaffold | 5 MCP tools (display, audio, network, privacy, system) |
+| `vidhana-settings` | MVP | TOML persistence + SQLite audit trail, wired into all mutation paths |
+| `vidhana-mcp` | MVP | 5 MCP tools with persistence and change recording |
 
-All settings are in-memory only. No system backends exist. Changes made via GUI/API/MCP are not persisted automatically and do not affect the actual OS.
+Settings persist automatically via TOML on every mutation (API, MCP, GUI). All changes are recorded in SQLite audit history. No OS-level system backends yet — settings are stored but not applied to the OS.
 
 ---
 
@@ -25,40 +25,42 @@ Goal: A working settings app that reads and writes real config, persists across 
 
 ### Core
 
-- [ ] Fix `toml_from_str` placeholder in `vidhana-core` — use `toml::from_str` instead of `serde_json`
-- [ ] Add settings validation (brightness 0-100, volume 0-100, valid timezone strings, etc.)
-- [ ] Add `Default` display for `SettingsCategory`
+- [x] Fix `toml_from_str` placeholder in `vidhana-core` — use `toml::from_str` instead of `serde_json`
+- [x] Add settings validation (brightness 0-100, volume 0-100, scaling 0.5-3.0, etc.)
+- [x] Add `Display` impl for `SettingsCategory`
 
 ### Persistence
 
-- [ ] Auto-save settings on every mutation (GUI, API, MCP)
-- [ ] Wire `SettingsStore::record_change()` into API update handlers
-- [ ] Wire `SettingsStore::record_change()` into MCP `set` handlers
-- [ ] Pass `SettingsStore` through shared state (currently only loaded at startup in `main.rs`)
+- [x] Auto-save settings on every mutation (GUI, API, MCP)
+- [x] Wire `SettingsStore::record_change()` into API update handlers
+- [x] Wire `SettingsStore::record_change()` into MCP `set` handlers
+- [x] Pass `SettingsStore` through shared state via `AppState` / `Arc<SettingsStore>`
 
 ### API
 
-- [ ] Return proper error responses (`ApiError` -> JSON error body with status codes)
-- [ ] Add `PATCH` support for partial updates (current `POST` requires full struct replacement)
-- [ ] Add `/v1/settings/history` endpoint for recent changes
-- [ ] Add `/v1/settings/{category}/history` endpoint
+- [x] Return proper error responses (`ApiError` -> JSON error body with status codes)
+- [x] Add `PATCH` support for partial updates (JSON merge on top of current state)
+- [x] Add `/v1/settings/history` endpoint for recent changes
+- [x] Add `/v1/settings/{category}/history` endpoint
 
 ### GUI
 
-- [ ] Wire GUI changes to persistence (save on change)
-- [ ] Add unsaved-changes indicator or auto-save confirmation
+- [x] Wire GUI changes to persistence (auto-save on every frame with dirty flag)
+- [x] Add auto-save via dirty tracking (saves at end of frame and on panel switch)
 - [ ] Add status bar showing API connection state
-- [ ] Add settings history panel (view recent changes)
+- [x] Add settings history panel (view recent changes in grid)
 
 ### MCP
 
 - [ ] Add `initialize` and `notifications` support per MCP spec
-- [ ] Return structured errors for invalid arguments
+- [x] Return structured errors for invalid arguments / unknown tools
 
 ### Testing
 
-- [ ] Integration tests for API (start server, hit endpoints, verify persistence)
-- [ ] Round-trip test: save via API -> load via GUI -> verify consistency
+- [x] Integration tests for API (start server, hit endpoints, verify persistence)
+- [x] Round-trip test: save via API -> load state -> verify consistency
+- [x] PATCH validation test (clamp out-of-range, reject invalid enums)
+- [x] MCP persistence and history recording tests
 
 ---
 
