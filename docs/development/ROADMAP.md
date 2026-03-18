@@ -52,7 +52,7 @@ Goal: A working settings app that reads and writes real config, persists across 
 
 ### MCP
 
-- [ ] Add `initialize` and `notifications` support per MCP spec
+- [x] Add `initialize` and `notifications/initialized` support per MCP spec
 - [x] Return structured errors for invalid arguments / unknown tools
 
 ### Testing
@@ -88,16 +88,16 @@ Goal: Real system integration, natural language control, production-quality erro
 
 ### Natural Language
 
-- [ ] Add `/v1/nl` API endpoint that accepts natural language and returns structured intent
+- [x] Add `/v1/nl` API endpoint that accepts natural language and returns structured intent
 - [ ] Integrate with hoosh (8088) for LLM-powered NL parsing as upgrade path
-- [ ] Fallback to local keyword parser when hoosh is unavailable
+- [x] Fallback to local keyword parser when hoosh is unavailable (current default)
 - [ ] Add NL input bar to GUI (text field at top of settings)
 
 ### API Improvements
 
 - [ ] API versioning strategy (v1 stable contract)
 - [ ] Rate limiting
-- [ ] Request/response logging middleware
+- [x] Request/response logging middleware (tower-http TraceLayer)
 - [ ] OpenAPI/Swagger spec generation
 - [ ] WebSocket endpoint for real-time settings change notifications
 
@@ -111,17 +111,17 @@ Goal: Real system integration, natural language control, production-quality erro
 
 ### MCP Improvements
 
-- [ ] Full MCP protocol compliance (capabilities, resources, prompts)
-- [ ] Add `vidhana_history` tool for querying change history
+- [x] MCP protocol compliance: initialize, capabilities, tools/list, tools/call
+- [x] Add `vidhana_history` tool for querying change history (6 tools total)
 - [ ] Add `vidhana_nl` tool for natural language settings via MCP
 - [ ] SSE transport option (in addition to stdin/stdout)
 
 ### Quality
 
-- [ ] Structured error types across all crates (no `.unwrap()` in production paths)
+- [x] Structured error types in API (`ApiError` with JSON responses, proper status codes)
 - [ ] Graceful degradation when system backends are unavailable
-- [ ] CI pipeline: `cargo test`, `cargo clippy`, `cargo fmt --check`
-- [ ] Minimum test coverage for all public APIs
+- [x] CI pipeline: `cargo test`, `cargo clippy`, `cargo fmt --check` (all pass clean)
+- [x] Minimum test coverage for all public APIs (99 tests across workspace)
 - [ ] man page / `--help` improvements
 
 ---

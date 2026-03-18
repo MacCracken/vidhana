@@ -34,9 +34,9 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     let lower = lower.trim();
 
     // Brightness
-    if matches_any(&lower, &["brightness", "screen bright", "display bright"]) {
-        let action = detect_action(&lower);
-        let value = extract_number(&lower).map(|n| n.to_string());
+    if matches_any(lower, &["brightness", "screen bright", "display bright"]) {
+        let action = detect_action(lower);
+        let value = extract_number(lower).map(|n| n.to_string());
         return Some(SettingsIntent {
             category: SettingsCategory::Display,
             action,
@@ -47,7 +47,16 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Theme
-    if matches_any(&lower, &["dark mode", "dark theme", "light mode", "light theme", "theme"]) {
+    if matches_any(
+        lower,
+        &[
+            "dark mode",
+            "dark theme",
+            "light mode",
+            "light theme",
+            "theme",
+        ],
+    ) {
         let value = if lower.contains("dark") {
             Some("dark".to_string())
         } else if lower.contains("light") {
@@ -57,7 +66,11 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
         };
         return Some(SettingsIntent {
             category: SettingsCategory::Display,
-            action: if value.is_some() { SettingsAction::Set } else { SettingsAction::Get },
+            action: if value.is_some() {
+                SettingsAction::Set
+            } else {
+                SettingsAction::Get
+            },
             key: "theme".to_string(),
             value,
             confidence: 0.95,
@@ -65,8 +78,12 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Mute (check before volume — "mute the sound" should match mute, not volume)
-    if matches_any(&lower, &["mute", "unmute", "silence"]) {
-        let value = if lower.contains("unmute") { "false" } else { "true" };
+    if matches_any(lower, &["mute", "unmute", "silence"]) {
+        let value = if lower.contains("unmute") {
+            "false"
+        } else {
+            "true"
+        };
         return Some(SettingsIntent {
             category: SettingsCategory::Audio,
             action: SettingsAction::Set,
@@ -77,9 +94,9 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Volume
-    if matches_any(&lower, &["volume", "sound", "audio level"]) {
-        let action = detect_action(&lower);
-        let value = extract_number(&lower).map(|n| n.to_string());
+    if matches_any(lower, &["volume", "sound", "audio level"]) {
+        let action = detect_action(lower);
+        let value = extract_number(lower).map(|n| n.to_string());
         return Some(SettingsIntent {
             category: SettingsCategory::Audio,
             action,
@@ -90,12 +107,12 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // WiFi
-    if matches_any(&lower, &["wifi", "wi-fi", "wireless"]) {
+    if matches_any(lower, &["wifi", "wi-fi", "wireless"]) {
         return Some(SettingsIntent {
             category: SettingsCategory::Network,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "wifi_enabled".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.9,
         });
     }
@@ -104,9 +121,9 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     if lower.contains("bluetooth") {
         return Some(SettingsIntent {
             category: SettingsCategory::Network,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "bluetooth_enabled".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.9,
         });
     }
@@ -115,41 +132,48 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     if lower.contains("firewall") {
         return Some(SettingsIntent {
             category: SettingsCategory::Network,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "firewall_enabled".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.85,
         });
     }
 
     // Night light / blue light
-    if matches_any(&lower, &["night light", "blue light", "night mode", "night shift"]) {
+    if matches_any(
+        lower,
+        &["night light", "blue light", "night mode", "night shift"],
+    ) {
         return Some(SettingsIntent {
             category: SettingsCategory::Display,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "night_light".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.9,
         });
     }
 
     // Screen lock
-    if matches_any(&lower, &["screen lock", "lock screen", "auto lock"]) {
+    if matches_any(lower, &["screen lock", "lock screen", "auto lock"]) {
         return Some(SettingsIntent {
             category: SettingsCategory::Privacy,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "screen_lock_enabled".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.85,
         });
     }
 
     // Timezone
-    if matches_any(&lower, &["timezone", "time zone"]) {
-        let value = extract_timezone(&lower);
+    if matches_any(lower, &["timezone", "time zone"]) {
+        let value = extract_timezone(lower);
         return Some(SettingsIntent {
             category: SettingsCategory::Locale,
-            action: if value.is_some() { SettingsAction::Set } else { SettingsAction::Get },
+            action: if value.is_some() {
+                SettingsAction::Set
+            } else {
+                SettingsAction::Get
+            },
             key: "timezone".to_string(),
             value,
             confidence: 0.85,
@@ -157,7 +181,7 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Language
-    if matches_any(&lower, &["language", "lang "]) && !lower.contains("keyboard") {
+    if matches_any(lower, &["language", "lang "]) && !lower.contains("keyboard") {
         return Some(SettingsIntent {
             category: SettingsCategory::Locale,
             action: SettingsAction::Get,
@@ -168,7 +192,17 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Power profile
-    if matches_any(&lower, &["power saver", "power save", "battery saver", "performance mode", "balanced mode", "power profile"]) {
+    if matches_any(
+        lower,
+        &[
+            "power saver",
+            "power save",
+            "battery saver",
+            "performance mode",
+            "balanced mode",
+            "power profile",
+        ],
+    ) {
         let value = if lower.contains("performance") {
             Some("performance".to_string())
         } else if lower.contains("saver") || lower.contains("save") {
@@ -180,7 +214,11 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
         };
         return Some(SettingsIntent {
             category: SettingsCategory::Power,
-            action: if value.is_some() { SettingsAction::Set } else { SettingsAction::Get },
+            action: if value.is_some() {
+                SettingsAction::Set
+            } else {
+                SettingsAction::Get
+            },
             key: "power_profile".to_string(),
             value,
             confidence: 0.9,
@@ -188,23 +226,26 @@ pub fn parse_settings_command(input: &str) -> Option<SettingsIntent> {
     }
 
     // Large text / accessibility
-    if matches_any(&lower, &["large text", "big text", "larger font", "bigger font"]) {
+    if matches_any(
+        lower,
+        &["large text", "big text", "larger font", "bigger font"],
+    ) {
         return Some(SettingsIntent {
             category: SettingsCategory::Accessibility,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "large_text".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.85,
         });
     }
 
     // Screen reader
-    if matches_any(&lower, &["screen reader"]) {
+    if matches_any(lower, &["screen reader"]) {
         return Some(SettingsIntent {
             category: SettingsCategory::Accessibility,
-            action: detect_toggle_action(&lower),
+            action: detect_toggle_action(lower),
             key: "screen_reader".to_string(),
-            value: detect_toggle_value(&lower),
+            value: detect_toggle_value(lower),
             confidence: 0.9,
         });
     }
@@ -217,9 +258,19 @@ fn matches_any(input: &str, patterns: &[&str]) -> bool {
 }
 
 fn detect_action(input: &str) -> SettingsAction {
-    if matches_any(input, &["increase", "raise", "higher", "up", "more", "brighter", "louder"]) {
+    if matches_any(
+        input,
+        &[
+            "increase", "raise", "higher", "up", "more", "brighter", "louder",
+        ],
+    ) {
         SettingsAction::Increase
-    } else if matches_any(input, &["decrease", "lower", "down", "less", "dimmer", "quieter", "reduce"]) {
+    } else if matches_any(
+        input,
+        &[
+            "decrease", "lower", "down", "less", "dimmer", "quieter", "reduce",
+        ],
+    ) {
         SettingsAction::Decrease
     } else if matches_any(input, &["set", "change", "make", "put"]) {
         SettingsAction::Set
@@ -235,9 +286,19 @@ fn detect_action(input: &str) -> SettingsAction {
 fn detect_toggle_action(input: &str) -> SettingsAction {
     if matches_any(input, &["toggle", "switch"]) {
         SettingsAction::Toggle
-    } else if matches_any(input, &["enable", "turn on", "activate", "start"]) {
-        SettingsAction::Set
-    } else if matches_any(input, &["disable", "turn off", "deactivate", "stop"]) {
+    } else if matches_any(
+        input,
+        &[
+            "enable",
+            "turn on",
+            "activate",
+            "start",
+            "disable",
+            "turn off",
+            "deactivate",
+            "stop",
+        ],
+    ) {
         SettingsAction::Set
     } else if matches_any(input, &["what", "show", "get", "check", "is"]) {
         SettingsAction::Get
@@ -257,7 +318,8 @@ fn detect_toggle_value(input: &str) -> Option<String> {
 }
 
 fn extract_number(input: &str) -> Option<u32> {
-    input.split_whitespace()
+    input
+        .split_whitespace()
         .find_map(|word| word.trim_end_matches('%').parse::<u32>().ok())
 }
 
@@ -265,10 +327,10 @@ fn extract_timezone(input: &str) -> Option<String> {
     // Look for common timezone patterns like UTC, US/Eastern, America/New_York
     let words: Vec<&str> = input.split_whitespace().collect();
     for (i, word) in words.iter().enumerate() {
-        if *word == "to" || *word == "=" {
-            if let Some(tz) = words.get(i + 1) {
-                return Some(tz.to_string());
-            }
+        if (*word == "to" || *word == "=")
+            && let Some(tz) = words.get(i + 1)
+        {
+            return Some(tz.to_string());
         }
         if word.contains('/') && word.len() > 3 {
             return Some(word.to_string());

@@ -70,21 +70,20 @@ impl Default for VidhanaConfig {
 impl VidhanaConfig {
     pub fn load() -> Self {
         let config_path = format!("{}/config.toml", dirs());
-        if let Ok(contents) = std::fs::read_to_string(&config_path) {
-            if let Ok(config) = toml_from_str(&contents) {
-                return config;
-            }
+        if let Ok(contents) = std::fs::read_to_string(&config_path)
+            && let Ok(config) = toml_from_str(&contents)
+        {
+            return config;
         }
         Self::default()
     }
 }
 
 fn dirs() -> String {
-    std::env::var("VIDHANA_DATA_DIR")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            format!("{home}/.local/share/vidhana")
-        })
+    std::env::var("VIDHANA_DATA_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        format!("{home}/.local/share/vidhana")
+    })
 }
 
 fn toml_from_str(s: &str) -> Result<VidhanaConfig, toml::de::Error> {
@@ -480,14 +479,38 @@ mod tests {
 
     #[test]
     fn test_settings_category_from_str() {
-        assert_eq!("display".parse::<SettingsCategory>().unwrap(), SettingsCategory::Display);
-        assert_eq!("screen".parse::<SettingsCategory>().unwrap(), SettingsCategory::Display);
-        assert_eq!("sound".parse::<SettingsCategory>().unwrap(), SettingsCategory::Audio);
-        assert_eq!("wifi".parse::<SettingsCategory>().unwrap(), SettingsCategory::Network);
-        assert_eq!("security".parse::<SettingsCategory>().unwrap(), SettingsCategory::Privacy);
-        assert_eq!("timezone".parse::<SettingsCategory>().unwrap(), SettingsCategory::Locale);
-        assert_eq!("battery".parse::<SettingsCategory>().unwrap(), SettingsCategory::Power);
-        assert_eq!("a11y".parse::<SettingsCategory>().unwrap(), SettingsCategory::Accessibility);
+        assert_eq!(
+            "display".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Display
+        );
+        assert_eq!(
+            "screen".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Display
+        );
+        assert_eq!(
+            "sound".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Audio
+        );
+        assert_eq!(
+            "wifi".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Network
+        );
+        assert_eq!(
+            "security".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Privacy
+        );
+        assert_eq!(
+            "timezone".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Locale
+        );
+        assert_eq!(
+            "battery".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Power
+        );
+        assert_eq!(
+            "a11y".parse::<SettingsCategory>().unwrap(),
+            SettingsCategory::Accessibility
+        );
         assert!("nonsense".parse::<SettingsCategory>().is_err());
     }
 
@@ -598,12 +621,24 @@ mod tests {
     fn test_state_validate() {
         let mut state = VidhanaState {
             config: VidhanaConfig::default(),
-            display: DisplaySettings { brightness: 200, ..DisplaySettings::default() },
-            audio: AudioSettings { master_volume: 200, ..AudioSettings::default() },
+            display: DisplaySettings {
+                brightness: 200,
+                ..DisplaySettings::default()
+            },
+            audio: AudioSettings {
+                master_volume: 200,
+                ..AudioSettings::default()
+            },
             network: NetworkSettings::default(),
-            privacy: PrivacySettings { screen_lock_timeout_secs: 1, ..PrivacySettings::default() },
+            privacy: PrivacySettings {
+                screen_lock_timeout_secs: 1,
+                ..PrivacySettings::default()
+            },
             locale: LocaleSettings::default(),
-            power: PowerSettings { suspend_timeout_minutes: 999, ..PowerSettings::default() },
+            power: PowerSettings {
+                suspend_timeout_minutes: 999,
+                ..PowerSettings::default()
+            },
             accessibility: AccessibilitySettings::default(),
         };
         state.validate();

@@ -115,6 +115,19 @@ impl eframe::App for VidhanaApp {
                 }
             });
 
+        // Bottom status bar
+        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!("Vidhana v{}", env!("CARGO_PKG_VERSION")));
+                ui.separator();
+                if self.dirty {
+                    ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
+                } else {
+                    ui.label("All changes saved");
+                }
+            });
+        });
+
         // Main content
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(self.active_panel.label());
@@ -152,7 +165,12 @@ impl VidhanaApp {
             guard.display.brightness = brightness as u8;
             self.dirty = true;
             drop(guard);
-            self.record_change("display", "brightness", &old, &(brightness as u8).to_string());
+            self.record_change(
+                "display",
+                "brightness",
+                &old,
+                &(brightness as u8).to_string(),
+            );
             return;
         }
 
@@ -235,7 +253,10 @@ impl VidhanaApp {
 
         ui.add_space(8.0);
         ui.label("Output device");
-        if ui.text_edit_singleline(&mut guard.audio.output_device).changed() {
+        if ui
+            .text_edit_singleline(&mut guard.audio.output_device)
+            .changed()
+        {
             self.dirty = true;
         }
 
@@ -270,7 +291,10 @@ impl VidhanaApp {
 
         ui.add_space(8.0);
         ui.label("Hostname");
-        if ui.text_edit_singleline(&mut guard.network.hostname).changed() {
+        if ui
+            .text_edit_singleline(&mut guard.network.hostname)
+            .changed()
+        {
             self.dirty = true;
         }
 
@@ -314,14 +338,20 @@ impl VidhanaApp {
         toggle!(guard.privacy.telemetry_enabled, "Telemetry");
         toggle!(guard.privacy.camera_enabled, "Camera access");
         toggle!(guard.privacy.microphone_enabled, "Microphone access");
-        toggle!(guard.privacy.agent_approval_required, "Require approval for agent actions");
+        toggle!(
+            guard.privacy.agent_approval_required,
+            "Require approval for agent actions"
+        );
     }
 
     fn render_locale(&mut self, ui: &mut egui::Ui) {
         let mut guard = self.state.write().unwrap();
 
         ui.label("Language");
-        if ui.text_edit_singleline(&mut guard.locale.language).changed() {
+        if ui
+            .text_edit_singleline(&mut guard.locale.language)
+            .changed()
+        {
             self.dirty = true;
         }
 
@@ -389,7 +419,10 @@ impl VidhanaApp {
 
         ui.add_space(8.0);
         let old_lid = guard.power.suspend_on_lid_close;
-        ui.checkbox(&mut guard.power.suspend_on_lid_close, "Suspend on lid close");
+        ui.checkbox(
+            &mut guard.power.suspend_on_lid_close,
+            "Suspend on lid close",
+        );
         if guard.power.suspend_on_lid_close != old_lid {
             self.dirty = true;
         }
@@ -537,11 +570,8 @@ mod tests {
 
     fn test_store() -> Arc<SettingsStore> {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "vidhana-ui-test-{}-{}",
-            std::process::id(),
-            id
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("vidhana-ui-test-{}-{}", std::process::id(), id));
         Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap())
     }
 

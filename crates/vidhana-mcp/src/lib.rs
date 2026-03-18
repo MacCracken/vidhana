@@ -69,7 +69,9 @@ pub fn list_tools() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "vidhana_display".to_string(),
-            description: "Get or set AGNOS display settings (brightness, theme, scaling, night light)".to_string(),
+            description:
+                "Get or set AGNOS display settings (brightness, theme, scaling, night light)"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -82,7 +84,8 @@ pub fn list_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "vidhana_audio".to_string(),
-            description: "Get or set AGNOS audio settings (volume, mute, output device)".to_string(),
+            description: "Get or set AGNOS audio settings (volume, mute, output device)"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -94,7 +97,8 @@ pub fn list_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "vidhana_network".to_string(),
-            description: "Get or set AGNOS network settings (WiFi, Bluetooth, firewall, DNS)".to_string(),
+            description: "Get or set AGNOS network settings (WiFi, Bluetooth, firewall, DNS)"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -107,7 +111,8 @@ pub fn list_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "vidhana_privacy".to_string(),
-            description: "Get or set AGNOS privacy settings (screen lock, telemetry, camera, mic)".to_string(),
+            description: "Get or set AGNOS privacy settings (screen lock, telemetry, camera, mic)"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -121,7 +126,9 @@ pub fn list_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "vidhana_system".to_string(),
-            description: "Get or set AGNOS system settings (power profile, locale, timezone, accessibility)".to_string(),
+            description:
+                "Get or set AGNOS system settings (power profile, locale, timezone, accessibility)"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -133,7 +140,33 @@ pub fn list_tools() -> Vec<McpTool> {
                 }
             }),
         },
+        McpTool {
+            name: "vidhana_history".to_string(),
+            description: "Query recent settings change history with optional category filter"
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "category": { "type": "string", "enum": ["display", "audio", "network", "privacy", "power", "locale", "accessibility"] },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+                }
+            }),
+        },
     ]
+}
+
+/// Build the MCP initialize response
+pub fn initialize_response() -> serde_json::Value {
+    serde_json::json!({
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+            "tools": {}
+        },
+        "serverInfo": {
+            "name": "vidhana",
+            "version": env!("CARGO_PKG_VERSION")
+        }
+    })
 }
 
 /// Handle an MCP tool call
@@ -148,6 +181,7 @@ pub fn handle_tool_call(
         "vidhana_network" => handle_network(call, state, store),
         "vidhana_privacy" => handle_privacy(call, state, store),
         "vidhana_system" => handle_system(call, state, store),
+        "vidhana_history" => handle_history(call, store),
         _ => McpToolResult::error(format!("Unknown tool: {}", call.name)),
     }
 }
@@ -362,11 +396,7 @@ fn handle_system(
         match category {
             "power" => {
                 let old = serde_json::to_string(&guard.power).unwrap_or_default();
-                if let Some(pp) = call
-                    .arguments
-                    .get("power_profile")
-                    .and_then(|v| v.as_str())
-                {
+                if let Some(pp) = call.arguments.get("power_profile").and_then(|v| v.as_str()) {
                     guard.power.power_profile = match pp {
                         "performance" => PowerProfile::Performance,
                         "power-saver" => PowerProfile::PowerSaver,
@@ -412,6 +442,45 @@ fn handle_system(
     }
 }
 
+fn handle_history(call: &McpToolCall, store: &Arc<SettingsStore>) -> McpToolResult {
+    let limit = call
+        .arguments
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20) as usize;
+    let category = call.arguments.get("category").and_then(|v| v.as_str());
+
+    let changes = if let Some(cat) = category {
+        store.changes_for_category(cat, limit)
+    } else {
+        store.recent_changes(limit)
+    };
+
+    match changes {
+        Ok(changes) if changes.is_empty() => {
+            McpToolResult::success("No changes recorded yet.".to_string())
+        }
+        Ok(changes) => {
+            let lines: Vec<String> = changes
+                .iter()
+                .map(|c| {
+                    format!(
+                        "[{}] {} ({:?}) key={} old={} new={}",
+                        c.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                        c.category,
+                        c.source,
+                        c.key,
+                        c.old_value,
+                        c.new_value
+                    )
+                })
+                .collect();
+            McpToolResult::success(lines.join("\n"))
+        }
+        Err(e) => McpToolResult::error(format!("Failed to query history: {e}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,11 +490,8 @@ mod tests {
 
     fn test_store() -> Arc<SettingsStore> {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "vidhana-mcp-test-{}-{}",
-            std::process::id(),
-            id
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("vidhana-mcp-test-{}-{}", std::process::id(), id));
         Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap())
     }
 
@@ -436,12 +502,13 @@ mod tests {
     #[test]
     fn test_list_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 6);
         assert_eq!(tools[0].name, "vidhana_display");
         assert_eq!(tools[1].name, "vidhana_audio");
         assert_eq!(tools[2].name, "vidhana_network");
         assert_eq!(tools[3].name, "vidhana_privacy");
         assert_eq!(tools[4].name, "vidhana_system");
+        assert_eq!(tools[5].name, "vidhana_history");
     }
 
     #[test]
@@ -595,10 +662,7 @@ mod tests {
             arguments: serde_json::json!({"action": "set", "category": "locale", "timezone": "America/New_York"}),
         };
         handle_tool_call(&call, &state, &store);
-        assert_eq!(
-            state.read().unwrap().locale.timezone,
-            "America/New_York"
-        );
+        assert_eq!(state.read().unwrap().locale.timezone, "America/New_York");
     }
 
     #[test]
@@ -647,5 +711,81 @@ mod tests {
         assert!(!changes.is_empty());
         assert_eq!(changes[0].category, "display");
         assert_eq!(changes[0].source, ChangeSource::Mcp);
+    }
+
+    #[test]
+    fn test_history_tool_empty() {
+        let state = test_state();
+        let store = test_store();
+        let call = McpToolCall {
+            name: "vidhana_history".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = handle_tool_call(&call, &state, &store);
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("No changes"));
+    }
+
+    #[test]
+    fn test_history_tool_with_changes() {
+        let state = test_state();
+        let store = test_store();
+        // Make a change first
+        let call = McpToolCall {
+            name: "vidhana_display".to_string(),
+            arguments: serde_json::json!({"action": "set", "brightness": 42}),
+        };
+        handle_tool_call(&call, &state, &store);
+        // Query history
+        let call = McpToolCall {
+            name: "vidhana_history".to_string(),
+            arguments: serde_json::json!({"limit": 10}),
+        };
+        let result = handle_tool_call(&call, &state, &store);
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("display"));
+    }
+
+    #[test]
+    fn test_history_tool_category_filter() {
+        let state = test_state();
+        let store = test_store();
+        // Make changes in two categories
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_display".to_string(),
+                arguments: serde_json::json!({"action": "set", "brightness": 42}),
+            },
+            &state,
+            &store,
+        );
+        handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_audio".to_string(),
+                arguments: serde_json::json!({"action": "set", "volume": 50}),
+            },
+            &state,
+            &store,
+        );
+        // Query only audio
+        let result = handle_tool_call(
+            &McpToolCall {
+                name: "vidhana_history".to_string(),
+                arguments: serde_json::json!({"category": "audio"}),
+            },
+            &state,
+            &store,
+        );
+        assert!(!result.is_error);
+        assert!(result.content[0].text.contains("audio"));
+        assert!(!result.content[0].text.contains("display"));
+    }
+
+    #[test]
+    fn test_initialize_response() {
+        let resp = initialize_response();
+        assert_eq!(resp["protocolVersion"], "2024-11-05");
+        assert!(resp["capabilities"]["tools"].is_object());
+        assert_eq!(resp["serverInfo"]["name"], "vidhana");
     }
 }

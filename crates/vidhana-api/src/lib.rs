@@ -4,11 +4,11 @@
 //! Connects to daimon (8090) for service queries and hoosh (8088) for NL.
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -106,6 +106,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/settings/history", get(get_history))
         .route("/v1/settings/{category}/history", get(get_category_history))
+        .route("/v1/nl", axum::routing::post(parse_natural_language))
         .with_state(state)
 }
 
@@ -114,13 +115,10 @@ pub fn router(state: AppState) -> Router {
 // ---------------------------------------------------------------------------
 
 /// Persist current state and record a change in the audit log.
-fn persist_and_record(
-    app: &AppState,
-    category: &str,
-    key: &str,
-    old_value: &str,
-    new_value: &str,
-) {
+///
+/// Note: RwLock unwraps are intentional — poisoned locks indicate a prior panic
+/// during a write, which is an unrecoverable state for a settings store.
+fn persist_and_record(app: &AppState, category: &str, key: &str, old_value: &str, new_value: &str) {
     let guard = app.settings.read().unwrap();
     if let Err(e) = app.store.save_state(&guard) {
         tracing::error!("Failed to persist settings: {e}");
@@ -198,7 +196,8 @@ async fn patch_display(
 ) -> Result<Json<DisplaySettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.display).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.display).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.display).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let mut updated: DisplaySettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -236,7 +235,8 @@ async fn patch_audio(
 ) -> Result<Json<AudioSettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.audio).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.audio).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.audio).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let mut updated: AudioSettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -273,7 +273,8 @@ async fn patch_network(
 ) -> Result<Json<NetworkSettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.network).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.network).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.network).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let updated: NetworkSettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -310,7 +311,8 @@ async fn patch_privacy(
 ) -> Result<Json<PrivacySettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.privacy).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.privacy).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.privacy).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let mut updated: PrivacySettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -347,7 +349,8 @@ async fn patch_locale(
 ) -> Result<Json<LocaleSettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.locale).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.locale).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.locale).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let updated: LocaleSettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -384,7 +387,8 @@ async fn patch_power(
 ) -> Result<Json<PowerSettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.power).unwrap_or_default();
-    let mut current = serde_json::to_value(&guard.power).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current =
+        serde_json::to_value(&guard.power).map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let mut updated: PowerSettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -407,7 +411,8 @@ async fn update_accessibility(
     State(app): State<AppState>,
     Json(update): Json<AccessibilitySettings>,
 ) -> Result<StatusCode, ApiError> {
-    let old = serde_json::to_string(&app.settings.read().unwrap().accessibility).unwrap_or_default();
+    let old =
+        serde_json::to_string(&app.settings.read().unwrap().accessibility).unwrap_or_default();
     app.settings.write().unwrap().accessibility = update.clone();
     let new = serde_json::to_string(&update).unwrap_or_default();
     persist_and_record(&app, "accessibility", "*", &old, &new);
@@ -421,8 +426,8 @@ async fn patch_accessibility(
 ) -> Result<Json<AccessibilitySettings>, ApiError> {
     let mut guard = app.settings.write().unwrap();
     let old = serde_json::to_string(&guard.accessibility).unwrap_or_default();
-    let mut current =
-        serde_json::to_value(&guard.accessibility).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut current = serde_json::to_value(&guard.accessibility)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     merge_json(&mut current, &patch);
     let updated: AccessibilitySettings =
         serde_json::from_value(current).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -455,12 +460,33 @@ async fn get_category_history(
     // Validate category name
     category
         .parse::<SettingsCategory>()
-        .map_err(|e| ApiError::NotFound(e))?;
+        .map_err(ApiError::NotFound)?;
     let limit = params.limit.unwrap_or(50);
     app.store
         .changes_for_category(&category, limit)
         .map(Json)
         .map_err(|e| ApiError::Internal(e.to_string()))
+}
+
+// --- Natural Language -------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct NlRequest {
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+struct NlResponse {
+    intent: Option<vidhana_ai::SettingsIntent>,
+    raw_text: String,
+}
+
+async fn parse_natural_language(Json(req): Json<NlRequest>) -> Result<Json<NlResponse>, ApiError> {
+    let intent = vidhana_ai::parse_settings_command(&req.text);
+    Ok(Json(NlResponse {
+        intent,
+        raw_text: req.text,
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -535,11 +561,8 @@ mod tests {
 
     fn test_app() -> AppState {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "vidhana-api-test-{}-{}",
-            std::process::id(),
-            id
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("vidhana-api-test-{}-{}", std::process::id(), id));
         let store = SettingsStore::new(dir.to_str().unwrap()).unwrap();
         AppState {
             settings: new_shared_state(VidhanaConfig::default()),
@@ -806,5 +829,38 @@ mod tests {
         assert_eq!(target["a"], 1);
         assert_eq!(target["b"], 99);
         assert_eq!(target["c"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_nl_endpoint_recognized() {
+        let app = router(test_app());
+        let req = Request::post("/v1/nl")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"text": "turn off wifi"}"#))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(parsed["intent"].is_object());
+        assert_eq!(parsed["intent"]["key"], "wifi_enabled");
+    }
+
+    #[tokio::test]
+    async fn test_nl_endpoint_unrecognized() {
+        let app = router(test_app());
+        let req = Request::post("/v1/nl")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"text": "what is the meaning of life"}"#))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(parsed["intent"].is_null());
     }
 }

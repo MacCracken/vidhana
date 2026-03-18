@@ -39,8 +39,7 @@ fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -96,8 +95,9 @@ fn main() {
             store,
         };
 
-        let app =
-            vidhana_api::router(app_state).layer(tower_http::cors::CorsLayer::permissive());
+        let app = vidhana_api::router(app_state)
+            .layer(tower_http::trace::TraceLayer::new_for_http())
+            .layer(tower_http::cors::CorsLayer::permissive());
 
         let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
         axum::serve(listener, app)
@@ -121,6 +121,14 @@ fn run_mcp_server(state: SharedState, store: Arc<vidhana_settings::SettingsStore
         };
 
         let response = match request.get("method").and_then(|m| m.as_str()) {
+            Some("initialize") => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "result": vidhana_mcp::initialize_response()
+                })
+            }
+            Some("notifications/initialized") => continue,
             Some("tools/list") => {
                 serde_json::json!({
                     "jsonrpc": "2.0",

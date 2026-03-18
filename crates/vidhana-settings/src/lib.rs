@@ -61,7 +61,10 @@ impl SettingsStore {
 
         std::fs::create_dir_all(&config_dir)?;
 
-        let store = Self { config_dir, db_path };
+        let store = Self {
+            config_dir,
+            db_path,
+        };
         store.init_db()?;
         Ok(store)
     }
@@ -79,7 +82,7 @@ impl SettingsStore {
                 source TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_history_category ON settings_history(category);
-            CREATE INDEX IF NOT EXISTS idx_history_timestamp ON settings_history(timestamp);"
+            CREATE INDEX IF NOT EXISTS idx_history_timestamp ON settings_history(timestamp);",
         )?;
         Ok(())
     }
@@ -127,53 +130,59 @@ impl SettingsStore {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT timestamp, category, key, old_value, new_value, source
-             FROM settings_history ORDER BY timestamp DESC LIMIT ?1"
+             FROM settings_history ORDER BY timestamp DESC LIMIT ?1",
         )?;
 
-        let changes = stmt.query_map([limit], |row| {
-            let ts_str: String = row.get(0)?;
-            let source_str: String = row.get(5)?;
-            Ok(SettingsChange {
-                timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                category: row.get(1)?,
-                key: row.get(2)?,
-                old_value: row.get(3)?,
-                new_value: row.get(4)?,
-                source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let changes = stmt
+            .query_map([limit], |row| {
+                let ts_str: String = row.get(0)?;
+                let source_str: String = row.get(5)?;
+                Ok(SettingsChange {
+                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(|_| chrono::Utc::now()),
+                    category: row.get(1)?,
+                    key: row.get(2)?,
+                    old_value: row.get(3)?,
+                    new_value: row.get(4)?,
+                    source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(changes)
     }
 
     /// Get change history for a specific category
-    pub fn changes_for_category(&self, category: &str, limit: usize) -> Result<Vec<SettingsChange>, StorageError> {
+    pub fn changes_for_category(
+        &self,
+        category: &str,
+        limit: usize,
+    ) -> Result<Vec<SettingsChange>, StorageError> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT timestamp, category, key, old_value, new_value, source
-             FROM settings_history WHERE category = ?1 ORDER BY timestamp DESC LIMIT ?2"
+             FROM settings_history WHERE category = ?1 ORDER BY timestamp DESC LIMIT ?2",
         )?;
 
-        let changes = stmt.query_map(rusqlite::params![category, limit], |row| {
-            let ts_str: String = row.get(0)?;
-            let source_str: String = row.get(5)?;
-            Ok(SettingsChange {
-                timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                category: row.get(1)?,
-                key: row.get(2)?,
-                old_value: row.get(3)?,
-                new_value: row.get(4)?,
-                source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let changes = stmt
+            .query_map(rusqlite::params![category, limit], |row| {
+                let ts_str: String = row.get(0)?;
+                let source_str: String = row.get(5)?;
+                Ok(SettingsChange {
+                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(|_| chrono::Utc::now()),
+                    category: row.get(1)?,
+                    key: row.get(2)?,
+                    old_value: row.get(3)?,
+                    new_value: row.get(4)?,
+                    source: serde_json::from_str(&source_str).unwrap_or(ChangeSource::Cli),
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(changes)
     }
@@ -188,8 +197,8 @@ impl SettingsStore {
 mod tests {
     use super::*;
 
-    use vidhana_core::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use vidhana_core::*;
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -256,15 +265,21 @@ mod tests {
     #[test]
     fn test_changes_for_category() {
         let store = temp_store();
-        for (cat, key) in [("display", "brightness"), ("audio", "volume"), ("display", "theme")] {
-            store.record_change(&SettingsChange {
-                timestamp: chrono::Utc::now(),
-                category: cat.to_string(),
-                key: key.to_string(),
-                old_value: "old".to_string(),
-                new_value: "new".to_string(),
-                source: ChangeSource::Api,
-            }).unwrap();
+        for (cat, key) in [
+            ("display", "brightness"),
+            ("audio", "volume"),
+            ("display", "theme"),
+        ] {
+            store
+                .record_change(&SettingsChange {
+                    timestamp: chrono::Utc::now(),
+                    category: cat.to_string(),
+                    key: key.to_string(),
+                    old_value: "old".to_string(),
+                    new_value: "new".to_string(),
+                    source: ChangeSource::Api,
+                })
+                .unwrap();
         }
 
         let display_changes = store.changes_for_category("display", 10).unwrap();

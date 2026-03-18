@@ -3112,6 +3112,7 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -3320,6 +3321,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "vidhana-ai",
  "vidhana-core",
  "vidhana-settings",
 ]
