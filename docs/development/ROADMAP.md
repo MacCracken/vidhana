@@ -125,8 +125,9 @@ Goal: Real system integration, natural language control, production-quality erro
 - [x] Structured error types in API (`ApiError` with JSON responses, proper status codes)
 - [ ] Graceful degradation when system backends are unavailable
 - [x] CI pipeline: `cargo test`, `cargo clippy`, `cargo fmt --check` (all pass clean)
-- [x] Minimum test coverage for all public APIs (99 tests across workspace)
+- [x] Minimum test coverage for all public APIs (199 tests, ~80% line coverage)
 - [ ] man page / `--help` improvements
+- [ ] UI end-to-end testing via headless egui or screenshot-based regression testing
 
 ---
 

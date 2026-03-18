@@ -657,4 +657,157 @@ mod tests {
         assert!(result.large_text);
         assert!(!result.screen_reader); // unchanged
     }
+
+    // --- Mock backend for testing error paths and sync ---
+
+    /// A backend that returns preset values from read and errors from apply.
+    struct MockBackend;
+
+    impl crate::backends::SystemBackend for MockBackend {
+        fn read_system_state(&self) -> crate::backends::SystemSnapshot {
+            crate::backends::SystemSnapshot {
+                brightness: Some(65),
+                master_volume: Some(42),
+                muted: Some(true),
+                wifi_enabled: Some(false),
+                bluetooth_enabled: Some(true),
+                power_profile: Some(PowerProfile::Performance),
+                timezone: Some("Europe/Berlin".to_string()),
+            }
+        }
+
+        fn apply_display(&self, _: &DisplaySettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::CommandNotFound(
+                "brightnessctl".to_string(),
+            ))
+        }
+        fn apply_audio(&self, _: &AudioSettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::CommandNotFound("wpctl".to_string()))
+        }
+        fn apply_network(&self, _: &NetworkSettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::CommandNotFound("nmcli".to_string()))
+        }
+        fn apply_power(&self, _: &PowerSettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::CommandNotFound(
+                "powerprofilesctl".to_string(),
+            ))
+        }
+        fn apply_locale(&self, _: &LocaleSettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::CommandNotFound(
+                "timedatectl".to_string(),
+            ))
+        }
+        fn apply_privacy(&self, _: &PrivacySettings) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::DeviceUnavailable(
+                "compositor".to_string(),
+            ))
+        }
+        fn apply_accessibility(
+            &self,
+            _: &AccessibilitySettings,
+        ) -> Result<(), crate::BackendError> {
+            Err(crate::BackendError::DeviceUnavailable("at-spi".to_string()))
+        }
+    }
+
+    fn mock_service() -> Arc<SettingsService> {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("vidhana-svc-mock-{}-{}", std::process::id(), id));
+        let store = Arc::new(SettingsStore::new(dir.to_str().unwrap()).unwrap());
+        let state = new_shared_state(VidhanaConfig::default());
+        Arc::new(SettingsService::new(state, store, Arc::new(MockBackend)))
+    }
+
+    #[test]
+    fn test_sync_from_os_with_values() {
+        let svc = mock_service();
+        svc.sync_from_os();
+        let g = svc.state.read().unwrap();
+        assert_eq!(g.display.brightness, 65);
+        assert_eq!(g.audio.master_volume, 42);
+        assert!(g.audio.muted);
+        assert!(!g.network.wifi_enabled);
+        assert!(g.network.bluetooth_enabled);
+        assert_eq!(g.power.power_profile, PowerProfile::Performance);
+        assert_eq!(g.locale.timezone, "Europe/Berlin");
+    }
+
+    #[test]
+    fn test_update_display_with_backend_error() {
+        // Backend errors should be logged but not block the update
+        let svc = mock_service();
+        svc.update_display(
+            DisplaySettings {
+                brightness: 50,
+                ..DisplaySettings::default()
+            },
+            ChangeSource::Api,
+        )
+        .unwrap();
+        assert_eq!(svc.state.read().unwrap().display.brightness, 50);
+    }
+
+    #[test]
+    fn test_update_audio_with_backend_error() {
+        let svc = mock_service();
+        svc.update_audio(
+            AudioSettings {
+                master_volume: 30,
+                ..AudioSettings::default()
+            },
+            ChangeSource::Api,
+        )
+        .unwrap();
+        assert_eq!(svc.state.read().unwrap().audio.master_volume, 30);
+    }
+
+    #[test]
+    fn test_update_network_with_backend_error() {
+        let svc = mock_service();
+        let mut net = NetworkSettings::default();
+        net.wifi_enabled = false;
+        svc.update_network(net, ChangeSource::Api).unwrap();
+        assert!(!svc.state.read().unwrap().network.wifi_enabled);
+    }
+
+    #[test]
+    fn test_update_power_with_backend_error() {
+        let svc = mock_service();
+        svc.update_power(
+            PowerSettings {
+                power_profile: PowerProfile::PowerSaver,
+                ..PowerSettings::default()
+            },
+            ChangeSource::Api,
+        )
+        .unwrap();
+        assert_eq!(
+            svc.state.read().unwrap().power.power_profile,
+            PowerProfile::PowerSaver
+        );
+    }
+
+    #[test]
+    fn test_update_locale_with_backend_error() {
+        let svc = mock_service();
+        let mut locale = LocaleSettings::default();
+        locale.timezone = "Asia/Tokyo".to_string();
+        svc.update_locale(locale, ChangeSource::Api).unwrap();
+        assert_eq!(svc.state.read().unwrap().locale.timezone, "Asia/Tokyo");
+    }
+
+    #[test]
+    fn test_update_privacy_with_backend_error() {
+        let svc = mock_service();
+        svc.update_privacy(PrivacySettings::default(), ChangeSource::Api)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_update_accessibility_with_backend_error() {
+        let svc = mock_service();
+        svc.update_accessibility(AccessibilitySettings::default(), ChangeSource::Api)
+            .unwrap();
+    }
 }

@@ -115,22 +115,12 @@ impl SystemBackend for LinuxBackend {
         if self.has_wpctl
             && let Some(out) = run_cmd_stdout("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])
         {
-            snap.muted = Some(out.contains("[MUTED]"));
-            if let Some(vol_str) = out.split_whitespace().nth(1)
-                && let Ok(vol) = vol_str.parse::<f32>()
-            {
-                snap.master_volume = Some((vol * 100.0).round() as u8);
-            }
+            let (vol, muted) = parse_wpctl_volume(&out);
+            snap.master_volume = vol;
+            snap.muted = muted;
         } else if self.has_pactl {
             if let Some(out) = run_cmd_stdout("pactl", &["get-sink-volume", "@DEFAULT_SINK@"]) {
-                for word in out.split_whitespace() {
-                    if let Some(pct) = word.strip_suffix('%')
-                        && let Ok(v) = pct.parse::<u8>()
-                    {
-                        snap.master_volume = Some(v.min(100));
-                        break;
-                    }
-                }
+                snap.master_volume = parse_pactl_volume(&out);
             }
             if let Some(out) = run_cmd_stdout("pactl", &["get-sink-mute", "@DEFAULT_SINK@"]) {
                 snap.muted = Some(out.contains("yes"));
@@ -335,6 +325,27 @@ fn run_cmd_stdout(cmd: &str, args: &[&str]) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
 }
 
+/// Parse wpctl get-volume output to get volume and mute state.
+/// Format: "Volume: 0.75" or "Volume: 0.75 [MUTED]"
+fn parse_wpctl_volume(output: &str) -> (Option<u8>, Option<bool>) {
+    let muted = Some(output.contains("[MUTED]"));
+    let volume = output
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<f32>().ok())
+        .map(|v| (v * 100.0).round() as u8);
+    (volume, muted)
+}
+
+/// Parse pactl get-sink-volume output for percentage.
+fn parse_pactl_volume(output: &str) -> Option<u8> {
+    output.split_whitespace().find_map(|word| {
+        word.strip_suffix('%')
+            .and_then(|pct| pct.parse::<u8>().ok())
+            .map(|v| v.min(100))
+    })
+}
+
 /// Parse brightnessctl -m output to get percentage.
 /// Format: "device,class,current,max,percentage"
 fn parse_brightnessctl(output: &str) -> Option<u8> {
@@ -432,5 +443,337 @@ mod tests {
             stderr: "not authorized".to_string(),
         };
         assert!(err.to_string().contains("nmcli"));
+    }
+
+    #[test]
+    fn test_backend_error_variants() {
+        let err = BackendError::DeviceUnavailable("backlight".to_string());
+        assert!(err.to_string().contains("backlight"));
+
+        let err = BackendError::PermissionDenied("timedatectl".to_string());
+        assert!(err.to_string().contains("timedatectl"));
+    }
+
+    // --- run_cmd / run_cmd_stdout tests ---
+
+    #[test]
+    fn test_run_cmd_success() {
+        // `true` always succeeds
+        assert!(run_cmd("true", &[]).is_ok());
+    }
+
+    #[test]
+    fn test_run_cmd_failure() {
+        // `false` always fails with exit code 1
+        let err = run_cmd("false", &[]).unwrap_err();
+        assert!(matches!(err, BackendError::CommandFailed { .. }));
+    }
+
+    #[test]
+    fn test_run_cmd_not_found() {
+        let err = run_cmd("definitely_not_a_real_cmd_xyz", &[]).unwrap_err();
+        assert!(matches!(err, BackendError::CommandNotFound(_)));
+    }
+
+    #[test]
+    fn test_run_cmd_stdout_success() {
+        let out = run_cmd_stdout("echo", &["hello"]);
+        assert!(out.is_some());
+        assert!(out.unwrap().contains("hello"));
+    }
+
+    #[test]
+    fn test_run_cmd_stdout_failure() {
+        let out = run_cmd_stdout("false", &[]);
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn test_run_cmd_stdout_not_found() {
+        let out = run_cmd_stdout("definitely_not_a_real_cmd_xyz", &[]);
+        assert!(out.is_none());
+    }
+
+    // --- LinuxBackend with no capabilities ---
+
+    fn no_tools_backend() -> LinuxBackend {
+        LinuxBackend {
+            has_brightnessctl: false,
+            has_wpctl: false,
+            has_pactl: false,
+            has_nmcli: false,
+            has_bluetoothctl: false,
+            has_powerprofilesctl: false,
+            has_timedatectl: false,
+            has_loginctl: false,
+        }
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_read_state() {
+        let backend = no_tools_backend();
+        let snap = backend.read_system_state();
+        // All None when no tools available
+        assert!(snap.brightness.is_none());
+        assert!(snap.master_volume.is_none());
+        assert!(snap.muted.is_none());
+        assert!(snap.wifi_enabled.is_none());
+        assert!(snap.bluetooth_enabled.is_none());
+        assert!(snap.power_profile.is_none());
+        assert!(snap.timezone.is_none());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_display() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_display(&DisplaySettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_audio() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_audio(&AudioSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_network() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_network(&NetworkSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_power() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_power(&PowerSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_locale() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_locale(&LocaleSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_privacy() {
+        let backend = no_tools_backend();
+        assert!(backend.apply_privacy(&PrivacySettings::default()).is_ok());
+    }
+
+    #[test]
+    fn test_linux_backend_no_tools_apply_accessibility() {
+        let backend = no_tools_backend();
+        assert!(
+            backend
+                .apply_accessibility(&AccessibilitySettings::default())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_linux_backend_apply_locale_empty_timezone() {
+        // Even with timedatectl "available", empty timezone should be a no-op
+        let backend = LinuxBackend {
+            has_timedatectl: true,
+            ..no_tools_backend()
+        };
+        let settings = LocaleSettings {
+            timezone: String::new(),
+            ..LocaleSettings::default()
+        };
+        assert!(backend.apply_locale(&settings).is_ok());
+    }
+
+    #[test]
+    fn test_log_capabilities_no_panic() {
+        let backend = no_tools_backend();
+        backend.log_capabilities();
+        // Also test with some tools "available"
+        let detected = LinuxBackend::detect();
+        detected.log_capabilities();
+    }
+
+    // --- LinuxBackend read_system_state with real tools (best-effort) ---
+
+    #[test]
+    fn test_linux_backend_real_read_state() {
+        // Uses detect() to find real tools — results vary by environment
+        // but should never panic
+        let backend = LinuxBackend::detect();
+        let snap = backend.read_system_state();
+        // Just verify it returns without error
+        // On CI: most fields will be None (no desktop tools)
+        // On desktop: some fields will have values
+        let _ = snap.brightness;
+        let _ = snap.master_volume;
+        let _ = snap.muted;
+        let _ = snap.wifi_enabled;
+        let _ = snap.bluetooth_enabled;
+        let _ = snap.power_profile;
+        let _ = snap.timezone;
+    }
+
+    #[test]
+    fn test_parse_brightnessctl_multiline() {
+        // Some systems output multiple devices
+        let output = "device1,class,50,100,50%\ndevice2,class,75,100,75%";
+        // Should return the first match
+        assert_eq!(parse_brightnessctl(output), Some(50));
+    }
+
+    #[test]
+    fn test_parse_brightnessctl_over_100() {
+        // Should clamp to 100
+        assert_eq!(parse_brightnessctl("device,class,255,255,150%"), Some(100));
+    }
+
+    // --- wpctl / pactl parsing ---
+
+    #[test]
+    fn test_parse_wpctl_volume_normal() {
+        let (vol, muted) = parse_wpctl_volume("Volume: 0.75");
+        assert_eq!(vol, Some(75));
+        assert_eq!(muted, Some(false));
+    }
+
+    #[test]
+    fn test_parse_wpctl_volume_muted() {
+        let (vol, muted) = parse_wpctl_volume("Volume: 0.50 [MUTED]");
+        assert_eq!(vol, Some(50));
+        assert_eq!(muted, Some(true));
+    }
+
+    #[test]
+    fn test_parse_wpctl_volume_zero() {
+        let (vol, muted) = parse_wpctl_volume("Volume: 0.00");
+        assert_eq!(vol, Some(0));
+        assert_eq!(muted, Some(false));
+    }
+
+    #[test]
+    fn test_parse_wpctl_volume_garbage() {
+        let (vol, muted) = parse_wpctl_volume("garbage");
+        assert!(vol.is_none());
+        assert_eq!(muted, Some(false));
+    }
+
+    #[test]
+    fn test_parse_pactl_volume() {
+        assert_eq!(
+            parse_pactl_volume("Volume: front-left: 65536 / 100% / 0.00 dB"),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn test_parse_pactl_volume_partial() {
+        assert_eq!(
+            parse_pactl_volume("Volume: front-left: 42000 / 64% / -11.70 dB"),
+            Some(64)
+        );
+    }
+
+    #[test]
+    fn test_parse_pactl_volume_no_match() {
+        assert_eq!(parse_pactl_volume("no percentage here"), None);
+    }
+
+    // --- LinuxBackend with real tools (conditional) ---
+
+    #[test]
+    fn test_linux_backend_read_timezone_if_available() {
+        if !has_cmd("timedatectl") {
+            return; // skip on systems without timedatectl
+        }
+        let backend = LinuxBackend {
+            has_timedatectl: true,
+            ..no_tools_backend()
+        };
+        let snap = backend.read_system_state();
+        // timedatectl should return a timezone
+        assert!(snap.timezone.is_some());
+        assert!(!snap.timezone.unwrap().is_empty());
+    }
+
+    /// Backend with all flags true, even if tools don't exist.
+    /// This exercises the code paths inside the `if self.has_*` branches.
+    fn all_tools_backend() -> LinuxBackend {
+        LinuxBackend {
+            has_brightnessctl: true,
+            has_wpctl: true,
+            has_pactl: true,
+            has_nmcli: true,
+            has_bluetoothctl: true,
+            has_powerprofilesctl: true,
+            has_timedatectl: true,
+            has_loginctl: true,
+        }
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_read_state() {
+        // Forces all branches to execute; commands may fail but shouldn't panic
+        let backend = all_tools_backend();
+        let snap = backend.read_system_state();
+        // Results depend on whether tools are actually installed
+        let _ = snap;
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_display() {
+        let backend = all_tools_backend();
+        // May fail (tool not installed or no backlight device), but should not panic
+        let _ = backend.apply_display(&DisplaySettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_audio() {
+        let backend = all_tools_backend();
+        let _ = backend.apply_audio(&AudioSettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_network() {
+        let backend = all_tools_backend();
+        let _ = backend.apply_network(&NetworkSettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_power() {
+        let backend = all_tools_backend();
+        let _ = backend.apply_power(&PowerSettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_locale() {
+        let backend = all_tools_backend();
+        let mut locale = LocaleSettings::default();
+        locale.timezone = "UTC".to_string();
+        let _ = backend.apply_locale(&locale);
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_privacy() {
+        let backend = all_tools_backend();
+        let _ = backend.apply_privacy(&PrivacySettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_all_flags_apply_accessibility() {
+        let backend = all_tools_backend();
+        let _ = backend.apply_accessibility(&AccessibilitySettings::default());
+    }
+
+    #[test]
+    fn test_linux_backend_read_bluetooth_if_available() {
+        if !has_cmd("bluetoothctl") {
+            return; // skip
+        }
+        let backend = LinuxBackend {
+            has_bluetoothctl: true,
+            ..no_tools_backend()
+        };
+        let snap = backend.read_system_state();
+        // bluetoothctl show should return a powered state (true or false)
+        assert!(snap.bluetooth_enabled.is_some());
     }
 }
