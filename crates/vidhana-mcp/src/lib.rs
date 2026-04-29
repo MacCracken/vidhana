@@ -4,19 +4,14 @@
 //! All mutations go through `SettingsService` for consistent
 //! validation, OS backend application, persistence, and auditing.
 
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use bote::{ToolDef, ToolSchema};
+use serde::{Deserialize, Serialize};
 use vidhana_backend::SettingsService;
 use vidhana_core::*;
 use vidhana_settings::ChangeSource;
-
-/// MCP tool definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McpTool {
-    pub name: String,
-    pub description: String,
-    pub input_schema: serde_json::Value,
-}
 
 /// MCP tool call request
 #[derive(Debug, Deserialize)]
@@ -63,93 +58,91 @@ impl McpToolResult {
 }
 
 /// List all available Vidhana MCP tools
-pub fn list_tools() -> Vec<McpTool> {
+pub fn list_tools() -> Vec<ToolDef> {
     vec![
-        McpTool {
-            name: "vidhana_display".to_string(),
-            description:
-                "Get or set AGNOS display settings (brightness, theme, scaling, night light)"
-                    .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": { "type": "string", "enum": ["get", "set"], "default": "get" },
-                    "brightness": { "type": "integer", "minimum": 0, "maximum": 100 },
-                    "theme": { "type": "string", "enum": ["light", "dark", "system"] },
-                    "night_light": { "type": "boolean" }
-                }
-            }),
-        },
-        McpTool {
-            name: "vidhana_audio".to_string(),
-            description: "Get or set AGNOS audio settings (volume, mute, output device)"
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": { "type": "string", "enum": ["get", "set"], "default": "get" },
-                    "volume": { "type": "integer", "minimum": 0, "maximum": 100 },
-                    "muted": { "type": "boolean" }
-                }
-            }),
-        },
-        McpTool {
-            name: "vidhana_network".to_string(),
-            description: "Get or set AGNOS network settings (WiFi, Bluetooth, firewall, DNS)"
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": { "type": "string", "enum": ["get", "set"], "default": "get" },
-                    "wifi_enabled": { "type": "boolean" },
-                    "bluetooth_enabled": { "type": "boolean" },
-                    "firewall_enabled": { "type": "boolean" }
-                }
-            }),
-        },
-        McpTool {
-            name: "vidhana_privacy".to_string(),
-            description: "Get or set AGNOS privacy settings (screen lock, telemetry, camera, mic)"
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": { "type": "string", "enum": ["get", "set"], "default": "get" },
-                    "screen_lock_enabled": { "type": "boolean" },
-                    "telemetry_enabled": { "type": "boolean" },
-                    "camera_enabled": { "type": "boolean" },
-                    "microphone_enabled": { "type": "boolean" }
-                }
-            }),
-        },
-        McpTool {
-            name: "vidhana_system".to_string(),
-            description:
-                "Get or set AGNOS system settings (power profile, locale, timezone, accessibility)"
-                    .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "action": { "type": "string", "enum": ["get", "set"], "default": "get" },
-                    "category": { "type": "string", "enum": ["power", "locale", "accessibility"] },
-                    "power_profile": { "type": "string", "enum": ["performance", "balanced", "power-saver"] },
-                    "timezone": { "type": "string" },
-                    "language": { "type": "string" }
-                }
-            }),
-        },
-        McpTool {
-            name: "vidhana_history".to_string(),
-            description: "Query recent settings change history with optional category filter"
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "category": { "type": "string", "enum": ["display", "audio", "network", "privacy", "power", "locale", "accessibility"] },
-                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
-                }
-            }),
-        },
+        ToolDef::new(
+            "vidhana_display",
+            "Get or set AGNOS display settings (brightness, theme, scaling, night light)",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("action".into(), serde_json::json!({ "type": "string", "enum": ["get", "set"], "default": "get" })),
+                    ("brightness".into(), serde_json::json!({ "type": "integer", "minimum": 0, "maximum": 100 })),
+                    ("theme".into(), serde_json::json!({ "type": "string", "enum": ["light", "dark", "system"] })),
+                    ("night_light".into(), serde_json::json!({ "type": "boolean" })),
+                ]),
+                vec![],
+            ),
+        ),
+        ToolDef::new(
+            "vidhana_audio",
+            "Get or set AGNOS audio settings (volume, mute, output device)",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("action".into(), serde_json::json!({ "type": "string", "enum": ["get", "set"], "default": "get" })),
+                    ("volume".into(), serde_json::json!({ "type": "integer", "minimum": 0, "maximum": 100 })),
+                    ("muted".into(), serde_json::json!({ "type": "boolean" })),
+                ]),
+                vec![],
+            ),
+        ),
+        ToolDef::new(
+            "vidhana_network",
+            "Get or set AGNOS network settings (WiFi, Bluetooth, firewall, DNS)",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("action".into(), serde_json::json!({ "type": "string", "enum": ["get", "set"], "default": "get" })),
+                    ("wifi_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                    ("bluetooth_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                    ("firewall_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                ]),
+                vec![],
+            ),
+        ),
+        ToolDef::new(
+            "vidhana_privacy",
+            "Get or set AGNOS privacy settings (screen lock, telemetry, camera, mic)",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("action".into(), serde_json::json!({ "type": "string", "enum": ["get", "set"], "default": "get" })),
+                    ("screen_lock_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                    ("telemetry_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                    ("camera_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                    ("microphone_enabled".into(), serde_json::json!({ "type": "boolean" })),
+                ]),
+                vec![],
+            ),
+        ),
+        ToolDef::new(
+            "vidhana_system",
+            "Get or set AGNOS system settings (power profile, locale, timezone, accessibility)",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("action".into(), serde_json::json!({ "type": "string", "enum": ["get", "set"], "default": "get" })),
+                    ("category".into(), serde_json::json!({ "type": "string", "enum": ["power", "locale", "accessibility"] })),
+                    ("power_profile".into(), serde_json::json!({ "type": "string", "enum": ["performance", "balanced", "power-saver"] })),
+                    ("timezone".into(), serde_json::json!({ "type": "string" })),
+                    ("language".into(), serde_json::json!({ "type": "string" })),
+                ]),
+                vec![],
+            ),
+        ),
+        ToolDef::new(
+            "vidhana_history",
+            "Query recent settings change history with optional category filter",
+            ToolSchema::new(
+                "object",
+                HashMap::from([
+                    ("category".into(), serde_json::json!({ "type": "string", "enum": ["display", "audio", "network", "privacy", "power", "locale", "accessibility"] })),
+                    ("limit".into(), serde_json::json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 20 })),
+                ]),
+                vec![],
+            ),
+        ),
     ]
 }
 
@@ -436,6 +429,10 @@ mod tests {
         let tools = list_tools();
         assert_eq!(tools.len(), 6);
         assert_eq!(tools[5].name, "vidhana_history");
+        // Verify all tools have object schemas with properties
+        for tool in &tools {
+            assert_eq!(tool.input_schema.schema_type, "object");
+        }
     }
 
     #[test]
@@ -556,8 +553,8 @@ mod tests {
     #[test]
     fn test_tool_schemas_valid() {
         for tool in list_tools() {
-            assert!(tool.input_schema.is_object());
-            assert!(tool.input_schema.get("properties").is_some());
+            assert_eq!(tool.input_schema.schema_type, "object");
+            assert!(!tool.input_schema.properties.is_empty() || tool.name == "vidhana_history");
         }
     }
 

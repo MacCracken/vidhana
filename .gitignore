@@ -1,5 +1,12 @@
 /target
+**/target/
 *.swp
 *.swo
 *~
 .env
+
+# Old Rust snapshot (kept locally, never commit)
+/rust-old/
+
+# Cyrius build artifacts
+/build/
